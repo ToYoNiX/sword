@@ -30,6 +30,17 @@ export interface RepeatRule {
   since?: string;
 }
 
+/** An anchor at fixed times, e.g. work hours. An end before the start is on the next day. */
+export interface FixedAnchorInput {
+  start: string;
+  end: string;
+  /** Weekdays it exists on; every day if left out. */
+  on?: Weekday[];
+  /** Whether it occupies your time. Defaults to false. */
+  busy?: boolean;
+  tags?: string[];
+}
+
 /** A named part of every day, e.g. afternoon. Times are "HH:MM", "day.start" or "day.end". */
 export interface DayPartInput {
   start: string;
@@ -123,6 +134,8 @@ export interface ScheduleInput {
    * add or replace a part, or set it to null to remove it.
    */
   dayParts?: Record<string, DayPartInput | null>;
+  /** Anchors at fixed times from the settings, e.g. work hours. */
+  fixedAnchors?: Record<string, FixedAnchorInput>;
   anchors?: AnchorInput[];
   events?: EventInput[];
   intentions: IntentionInput[];

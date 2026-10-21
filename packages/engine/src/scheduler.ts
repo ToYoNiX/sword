@@ -13,6 +13,7 @@
 import { buildAnchorIndex } from './anchors.ts';
 import type { AnchorIndex } from './anchors.ts';
 import { addDayParts, readDayParts } from './day-parts.ts';
+import { addFixedAnchors, readFixedAnchors } from './fixed-anchors.ts';
 import type { DayPart } from './day-parts.ts';
 import { LogicalDays } from './day.ts';
 import { formatDuration } from './duration.ts';
@@ -147,7 +148,9 @@ class Planner {
     this.dates = Array.from({ length: input.horizonDays }, (_, i) => addDays(today, i));
     this.dateSet = new Set(this.dates);
     this.dayParts = readDayParts(input.dayParts, this.anchors);
+    const fixed = readFixedAnchors(input.fixedAnchors, this.anchors, this.dayParts);
     addDayParts(this.dayParts, this.dates, this.days, this.anchors, this.timeZone);
+    addFixedAnchors(fixed, this.dates, this.anchors, this.timeZone);
 
     const compiled = compileIntentions(input.intentions, this.anchors, this.errors);
     this.intentions = compiled.valid;

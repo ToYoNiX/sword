@@ -150,7 +150,23 @@ clipped to the logical day, so with a day that starts at Fajr, the morning
 never starts before Fajr. They also give AI agents natural words to use
 ("this afternoon").
 
-### 4.4 Time zones and locations
+### 4.4 Fixed anchors
+
+Fixed times are just constant anchors, so `sword.yaml` can define them
+directly, without a plugin:
+
+```yaml
+anchors:
+  work:      { start: "09:00", end: "17:00", on: [sun, mon, tue, wed, thu], busy: true }
+  gym_hours: { start: "18:00", end: "21:00", on: [mon, wed, fri] }
+  night_shift: { start: "22:00", end: "06:00" }   # an end before the start is the next day
+```
+
+They exist only on their weekdays (every day if `on` is left out), so a rule
+like `before: work.start or 12:00` falls back on days off. `busy: true` makes
+them occupy time. Unlike day parts, they are not clipped to the logical day.
+
+### 4.5 Time zones and locations
 
 - All instants are stored in UTC. All anchors are resolved in the user's
   configured time zone and location for that day.

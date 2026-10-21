@@ -63,6 +63,7 @@ alias sword="node ~/path/to/sword/packages/cli/src/main.ts"
 | `sword init [dir]` | Create a vault with `sword.yaml` and an example task |
 | `sword check` | List every problem in the vault, by file (exit 1 on errors) |
 | `sword plan [--days N] [--json]` | Print the schedule, then what couldn't be placed and the inbox |
+| `sword export [--days N] [--out FILE]` | Write the schedule as iCalendar, e.g. to publish to Radicale |
 
 Commands find the vault the current folder is in, like git, or take `--dir`.
 Tasks are Markdown files in `tasks/`; see the

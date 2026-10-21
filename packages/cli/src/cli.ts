@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
 import { check } from './commands/check.ts';
+import { exportIcs } from './commands/export.ts';
 import { init } from './commands/init.ts';
 import { plan } from './commands/plan.ts';
 import { CliError } from './io.ts';
@@ -11,11 +12,13 @@ Commands:
   sword init [dir]        create a vault (sword.yaml and an example task)
   sword check             list every problem in the vault, by file
   sword plan              print the schedule
+  sword export            write the schedule as iCalendar (.ics)
 
 Options:
   --dir <path>            the vault (default: the one the current folder is in)
-  --days <n>              how many days to plan (plan; default: the settings, or 7)
+  --days <n>              how many days to plan (default: the settings, or 7)
   --json                  print the raw plan as JSON (plan)
+  --out <file>            write to a file instead of the screen (export)
   -h, --help              show this help
 `;
 
@@ -38,6 +41,12 @@ export async function run(args: string[], io: Io): Promise<number> {
           parseArgs({ args: rest, options: { dir: { type: 'string' }, days: { type: 'string' }, json: { type: 'boolean' } } }),
         );
         return await plan(io, { dir: values.dir, days: days(values.days), json: values.json === true });
+      }
+      case 'export': {
+        const { values } = parsed(() =>
+          parseArgs({ args: rest, options: { dir: { type: 'string' }, days: { type: 'string' }, out: { type: 'string' } } }),
+        );
+        return await exportIcs(io, { dir: values.dir, days: days(values.days), out: values.out });
       }
       default:
         throw new CliError(`unknown command "${command}"\n\n${USAGE}`, 2);

@@ -586,8 +586,8 @@ The engine must be usable without the server or UI. Given only a folder of
 files, a CLI can resolve, schedule, and output the result:
 
 ```sh
-sword plan                      # print today's computed schedule
-sword export --ics > out.ics    # compile the horizon to iCalendar
+sword plan                      # print the computed schedule
+sword export > out.ics          # compile the horizon to iCalendar (or --out out.ics)
 sword sync caldav               # push placements to Radicale, etc.
 ```
 

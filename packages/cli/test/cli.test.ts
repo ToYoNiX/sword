@@ -191,6 +191,25 @@ describe('sword plan', () => {
   });
 });
 
+describe('sword export', () => {
+  it('prints the plan as iCalendar', async () => {
+    const dir = await vault({ 'sword.yaml': config, ...tasks });
+    const result = await sword(['export', '--days', '2'], dir);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('BEGIN:VCALENDAR');
+    expect(result.out).toContain('SUMMARY:Study Go');
+    expect(result.out).toContain('UID:sword-study-go@2026-10-25');
+  });
+
+  it('writes to a file with --out', async () => {
+    const dir = await vault({ 'sword.yaml': config, ...tasks });
+    const result = await sword(['export', '--out', 'plan.ics'], dir);
+    expect(result.code).toBe(0);
+    expect(await readFile(join(dir, 'plan.ics'), 'utf8')).toContain('BEGIN:VEVENT');
+    expect(result.out).toContain('plan.ics');
+  });
+});
+
 describe('the sword command', () => {
   it('runs on plain Node, with no build step', async () => {
     const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));

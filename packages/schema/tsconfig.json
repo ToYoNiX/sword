@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Runs anywhere (node, browser, phone): no Node or DOM types.
+    "types": []
+  },
+  "include": ["src", "test"]
+}

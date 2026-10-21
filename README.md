@@ -41,11 +41,39 @@ The project started as **Calendrome**. Another project
 ([mklute101/calendrome](https://github.com/mklute101/calendrome)) already uses
 that name, so it is now Sword.
 
+## Try it
+
+Sword needs Node 24 and pnpm (`corepack enable` installs pnpm).
+
+```sh
+pnpm install
+pnpm sword init ~/my-calendar     # a vault: sword.yaml and an example task
+cd ~/my-calendar
+pnpm --dir ~/path/to/sword sword plan
+```
+
+To run it as just `sword`, add an alias:
+
+```sh
+alias sword="node ~/path/to/sword/packages/cli/src/main.ts"
+```
+
+| Command | What it does |
+|---|---|
+| `sword init [dir]` | Create a vault with `sword.yaml` and an example task |
+| `sword check` | List every problem in the vault, by file (exit 1 on errors) |
+| `sword plan [--days N] [--json]` | Print the schedule, then what couldn't be placed and the inbox |
+
+Commands find the vault the current folder is in, like git, or take `--dir`.
+Tasks are Markdown files in `tasks/`; see the
+[design document](docs/design.md#113-task-files) for the format.
+
 ## Status
 
-Early development. The scheduling engine (`packages/engine`) exists and is
-tested; the vault, server, MCP and UI come next. See the
-[design document](docs/design.md) for the full design.
+Early development. Working: the scheduling engine, reading vaults, and the
+CLI. Not yet: plugins (prayer times come from
+[sword-playground](https://github.com/ToYoNiX/sword-playground) for now),
+calendar import, the server, MCP and the UI.
 
 ## Related
 

@@ -1,0 +1,25 @@
+{
+  "name": "@sword/cli",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "sword": "./src/main.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@sword/engine": "workspace:*",
+    "@sword/schema": "workspace:*",
+    "@sword/vault": "workspace:*",
+    "temporal-polyfill": "^1.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

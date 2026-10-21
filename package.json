@@ -4,6 +4,7 @@
   "license": "MIT",
   "packageManager": "pnpm@12.14.0",
   "scripts": {
+    "sword": "node packages/cli/src/main.ts",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   }

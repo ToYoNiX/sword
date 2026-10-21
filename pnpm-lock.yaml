@@ -166,6 +166,31 @@ importers:
 
   .: {}
 
+  packages/cli:
+    dependencies:
+      '@sword/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@sword/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@sword/vault':
+        specifier: workspace:*
+        version: link:../vault
+      temporal-polyfill:
+        specifier: ^1.0.6
+        version: 1.0.6
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
   packages/engine:
     dependencies:
       temporal-polyfill:

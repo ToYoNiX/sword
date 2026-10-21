@@ -198,10 +198,10 @@ positions, and the scheduler picks one.
 title: Study Go
 duration: 45m
 repeat: daily
-window:
-  after: prayer.fajr
-  before: work.start
-avoid: [tag:prayer, tag:meeting]
+after: prayer.fajr
+before: work.start
+avoid:
+  - tag:meeting
 prefer: earliest
 ```
 
@@ -213,9 +213,8 @@ Every time rule (`at`, `after`, `before`, `within`) can list **fallbacks**,
 tried in order; the first that exists on that day is used:
 
 ```yaml
-window:
-  after: prayer.fajr
-  before: work.start or 12:00     # no work on Friday → before noon
+after: prayer.fajr
+before: work.start or 12:00     # no work on Friday → before noon
 ```
 
 ### 5.2 Rule vocabulary (v1)
@@ -223,13 +222,13 @@ window:
 | Rule | Kind | Example | Meaning |
 |---|---|---|---|
 | `at` | hard | `at: prayer.fajr.busy.end + 5m` | Start exactly here (formula) |
-| `window.after` | hard | `after: prayer.asr` | Start ≥ this instant |
-| `window.before` | hard | `before: prayer.maghrib` | End ≤ this instant |
-| `window.within` | hard | `within: work` | Entirely inside the anchor's window |
+| `after` | hard | `after: prayer.asr` | Start ≥ this instant |
+| `before` | hard | `before: prayer.maghrib` | End ≤ this instant |
+| `within` | hard | `within: work` | Entirely inside the anchor's window |
 | `avoid` | hard | `avoid: [tag:focus]` | Also keep clear of matching time that is *not* busy (see below) |
-| `deadline` | hard | `deadline: 2026-10-24` | Must end by this: a date means the end of that logical day, or an exact instant |
+| `deadline` | hard | `deadline: 2026-10-24` | Must end by this: a date means the end of that logical day; a date and time (`2026-10-24T17:00`) is read in your time zone |
 | `date` | hard | `date: 2026-10-26` | A one-off belongs to this logical day (required for a one-off with `at`) |
-| `repeat` | hard | `repeat: { on: [mon, wed] }` | Which logical days get an occurrence (§5.4) |
+| `repeat` | hard | `repeat: weekly` | Which logical days get an occurrence, with `repeat_every`, `repeat_on`, `repeat_day` and `repeat_since` (§5.4) |
 | `prefer` | soft | `prefer: earliest` / `latest` / `packed` | Which valid slot to take; `packed` is the smallest gap that fits (§6.4) |
 | `priority` | soft | `priority: 2` | Ordering when intentions compete; equal priority puts longer tasks first |
 | `depends_on` | hard | `depends_on: task:draft-outline` | *Later.* Only after that occurrence is placed earlier (or done) |
@@ -272,21 +271,37 @@ day* it goes. Instead of the full RRULE language, which is hard to understand
 in every app that exposes it, there is a small fixed menu that maps directly
 to a UI:
 
+| Property | Type | Meaning |
+|---|---|---|
+| `repeat` | text | `daily`, `weekly` or `monthly` |
+| `repeat_every` | number | Every N days, weeks or months (default 1) |
+| `repeat_on` | list | Weekdays, for weekly repeats: `mon` … `sun` |
+| `repeat_day` | number | Day of the month, for monthly repeats (1–31) |
+| `repeat_since` | date | The first possible date, and where "every N" counts from |
+
 ```yaml
-repeat: daily
-repeat: { on: [mon, wed, fri] }                       # weekly on these days
-repeat: { every: 2 days, since: 2026-10-21 }
-repeat: { every: 2 weeks, on: [mon], since: 2026-10-21 }
-repeat: { every: 3 months, on_day: 15, since: 2026-09-15 }
+repeat: weekly          # every Monday and Thursday
+repeat_on:
+  - mon
+  - thu
 ```
 
-- `since` is the first possible date and the point "every N" counts from. The
-  app fills it in when the task is created. It is required when N > 1.
-- Weeks run Monday to Sunday; "every 2 weeks" counts whole weeks from the week
-  containing `since`.
-- A weekly repeat without `on` uses the weekday of `since`; a monthly one
-  without `on_day` uses its day of the month.
-- `on_day: 31` falls on the last day of shorter months.
+```yaml
+repeat: monthly         # every 3 months, on the 15th
+repeat_every: 3
+repeat_day: 15
+repeat_since: 2026-09-15
+```
+
+- They are separate, flat properties rather than one nested value, so each
+  shows in Obsidian's properties panel with its own field (§11.3).
+- `repeat_since` is required when `repeat_every` is more than 1. The app fills
+  it in when the task is created.
+- Weeks run Monday to Sunday; every 2 weeks counts whole weeks from the week
+  containing `repeat_since`.
+- A weekly repeat without `repeat_on` uses the weekday of `repeat_since`; a
+  monthly one without `repeat_day` uses its day of the month.
+- `repeat_day: 31` falls on the last day of shorter months.
 - Everything is counted in **logical days**.
 
 ### 5.5 The inbox
@@ -658,31 +673,50 @@ intent goes in files, and computed state goes in the index.
 Each task is a Markdown file with YAML frontmatter, the same convention
 Obsidian uses:
 
+`tasks/Study Go.md`:
+
 ```markdown
 ---
-title: Study Go
 duration: 45m
 repeat: daily
-window:
-  after: prayer.fajr
-  before: work.start or 08:00
+after: prayer.fajr
+before: work.start or 08:00
 pins:
-  2026-10-26: "07:30"      # an occurrence moved by hand
-tags: [learning]
+  - 2026-10-26 07:30      # an occurrence moved by hand
+tags:
+  - learning
 ---
 
 Working through chapter 7. Free-form notes go here.
 ```
 
+The properties are **Obsidian properties**. Obsidian supports flat properties
+of a few types (text, list, number, checkbox, date, date and time) and gives
+each property name one type across the vault; nested values only show in
+source mode. So every Sword property is flat and always has the same type:
+
+| Type | Properties |
+|---|---|
+| Text | `duration`, `at`, `after`, `before`, `within`, `prefer`, `repeat`, `title`, `id` |
+| List | `repeat_on`, `avoid`, `pins`, `tags` |
+| Number | `priority`, `repeat_every`, `repeat_day` |
+| Date | `date`, `repeat_since`, and `deadline` (which may also be a date and time) |
+
+- **The file name is the task.** `Study Go.md` is the task "Study Go", in any
+  language. `title` is only needed for a different display name, and `id` to
+  keep a stable id when renaming the file.
+- **Other properties are left alone**, so Obsidian's own (`aliases`,
+  `cssclasses`) and yours can live in the same note. Only near misses get a
+  warning, like `befor` ("did you mean before?"), so typos are still caught.
+- A list with one value may be written as plain text (`tags: learning`).
+
 The frontmatter schema **is** the rule format. The same schema (as JSON Schema)
 defines the inputs of the API and the MCP tools, so a rule looks the same
-whether it is typed in Vim, sent over HTTP, or produced by an agent. Unknown
-fields are warnings, not errors, so other tools can keep their own fields in
-the same file.
+whether it is typed in Vim or Obsidian, sent over HTTP, or produced by an agent.
 
-Pins live in the task file because they are decisions about that task: the
-key is the logical date of the occurrence, the value a local time. Pins on past
-dates are removed once their day has passed, so the list doesn't grow.
+Pins live in the task file because they are decisions about that task: each is
+the logical date of the occurrence and a local time. Pins on past dates are
+removed once their day has passed, so the list doesn't grow.
 
 ### 11.4 The log
 
@@ -877,9 +911,9 @@ demanding case: anchors that move daily, strict exclusions, and tight windows.
 - Global rule: never overlap `tag:prayer`. Each prayer is busy for 20 minutes from its start.
 - `work`: weekdays, 09:00–17:00.
 - *Morning Quran*: `at: prayer.fajr.busy.end + 5m`, 20m, daily.
-- *Study Go*: 45m, daily, `window: { after: prayer.fajr, before: work.start }`, `prefer: earliest`.
-- *Write report*: 30m, one-off, `window: { before: prayer.dhuhr }`, `deadline: day 3`.
-- *Walk*: 30m, daily, `window: { after: prayer.asr, before: prayer.maghrib }`.
+- *Study Go*: 45m, daily, `after: prayer.fajr`, `before: work.start`, `prefer: earliest`.
+- *Write report*: 30m, one-off, `before: prayer.dhuhr`, `deadline: day 3`.
+- *Walk*: 30m, daily, `after: prayer.asr`, `before: prayer.maghrib`.
 
 **Expectations**
 

@@ -47,10 +47,10 @@ const EXAMPLE_TASK = `---
 title: Plan the day
 duration: 15m
 repeat: daily
-window:
-  before: work.start or 10:00
+before: work.start or 10:00
 prefer: latest
 ---
 
-An example task; edit or delete it. Every Markdown file in tasks/ is a task.
+An example task; edit or delete it. Every Markdown file in tasks/ is a task,
+and its file name is its name. The properties above work in Obsidian too.
 `;

@@ -31,11 +31,10 @@ const study = `---
 title: Study Go
 duration: 45m
 repeat: daily
-window:
-  before: work.start or 08:00
+before: work.start or 08:00
 prefer: latest
 pins:
-  2026-10-26: "06:30"
+  - 2026-10-26 06:30
 ---
 
 Chapter 7.
@@ -63,6 +62,61 @@ describe('loadVault', () => {
     expect(v.log).toEqual([expect.objectContaining({ occurrenceId: 'study-go@2026-10-25', state: 'done' })]);
   });
 
+  it('takes note names as task ids: spaces and any language', async () => {
+    const v = await loadVault(
+      await vault({
+        'sword.yaml': '',
+        'tasks/Study Go.md': '---\nduration: 45m\n---\n',
+        'tasks/قراءة الكهف.md': '---\nduration: 20m\n---\n',
+      }),
+    );
+    expect(v.problems).toEqual([]);
+    expect(v.tasks.map((t) => t.id).sort()).toEqual(['Study Go', 'قراءة الكهف'].sort());
+  });
+
+  it('reads a note from an Obsidian vault without complaints', async () => {
+    const v = await loadVault(
+      await vault({
+        'sword.yaml': 'time_zone: Africa/Cairo\n',
+        'tasks/Read Al-Kahf.md': [
+          '---',
+          'duration: 20m',
+          'repeat: weekly',
+          'repeat_on:',
+          '  - fri',
+          'after: 08:00',
+          'tags:',
+          '  - quran',
+          'aliases:',
+          '  - Kahf',
+          'cssclasses:',
+          '  - wide',
+          'done: false',
+          '---',
+          '',
+          'Read [[Surah Al-Kahf]] before Jumu\'ah.',
+          '',
+        ].join('\n'),
+      }),
+    );
+    expect(v.problems).toEqual([]);
+    expect(v.tasks[0]).toMatchObject({ id: 'Read Al-Kahf', notes: "Read [[Surah Al-Kahf]] before Jumu'ah.\n" });
+    const plan = schedule(scheduleInput(v, { now: '2026-10-24T21:00:00Z' }));
+    expect(plan.placements.map((p) => p.occurrenceId)).toEqual(['Read Al-Kahf@2026-10-30']);
+  });
+
+  it('reads a deadline in Obsidian\'s date and time format in the vault\'s time zone', async () => {
+    const v = await loadVault(
+      await vault({
+        'sword.yaml': 'time_zone: Africa/Cairo\n',
+        'tasks/report.md': '---\nduration: 1h\nafter: 09:00\ndeadline: 2026-10-25T09:30:00\n---\n',
+      }),
+    );
+    // 09:30 in Cairo leaves only 30 minutes after 09:00: no room for an hour.
+    const plan = schedule(scheduleInput(v, { now: '2026-10-24T21:00:00Z' }));
+    expect(plan.unplaced).toEqual([expect.objectContaining({ occurrenceId: 'report', code: 'no_slot' })]);
+  });
+
   it('works without tasks/ and log/ folders', async () => {
     const v = await loadVault(await vault({ 'sword.yaml': '' }));
     expect(v).toMatchObject({ tasks: [], log: [], problems: [] });
@@ -86,19 +140,19 @@ describe('loadVault', () => {
         'sword.yaml': '',
         'tasks/good.md': '---\nduration: 15m\n---\n',
         'tasks/bad.md': '---\nduration: 45\n---\n',
-        'tasks/odd.md': '---\nduration: 15m\ncssclasses: [x]\n---\n',
+        'tasks/odd.md': '---\nduration: 15m\nbefor: 08:00\n---\n',
       }),
     );
     expect(v.tasks.map((t) => t.id)).toEqual(['good', 'odd']);
     expect(v.problems).toEqual([
       expect.objectContaining({ file: 'tasks/bad.md', level: 'error', message: expect.stringContaining('duration') }),
-      expect.objectContaining({ file: 'tasks/odd.md', level: 'warning', message: 'unknown field "cssclasses"' }),
+      expect.objectContaining({ file: 'tasks/odd.md', level: 'warning', message: 'unknown property "befor"; did you mean "before"?' }),
     ]);
   });
 
   it('drops a pin on a date that does not exist, with an error', async () => {
     const v = await loadVault(
-      await vault({ 'sword.yaml': '', 'tasks/x.md': '---\nduration: 15m\nrepeat: daily\npins:\n  2026-02-30: "07:00"\n  2026-03-01: "07:00"\n---\n' }),
+      await vault({ 'sword.yaml': '', 'tasks/x.md': '---\nduration: 15m\nrepeat: daily\npins:\n  - 2026-02-30 07:00\n  - 2026-03-01 07:00\n---\n' }),
     );
     expect(v.tasks[0]?.pins).toEqual({ '2026-03-01': '07:00' });
     expect(v.problems).toEqual([expect.objectContaining({ file: 'tasks/x.md', level: 'error', message: expect.stringContaining('2026-02-30') })]);
@@ -164,7 +218,7 @@ describe('scheduleInput', () => {
 
   it('pins a one-off task by its id', async () => {
     const v = await loadVault(
-      await vault({ 'sword.yaml': 'time_zone: UTC\n', 'tasks/call.md': '---\nduration: 30m\ndeadline: 2026-10-30\npins:\n  2026-10-27: "10:00"\n---\n' }),
+      await vault({ 'sword.yaml': 'time_zone: UTC\n', 'tasks/call.md': '---\nduration: 30m\ndeadline: 2026-10-30\npins:\n  - 2026-10-27 10:00\n---\n' }),
     );
     expect(scheduleInput(v, { now: '2026-10-25T00:00:00Z' }).pins).toEqual([{ occurrenceId: 'call', start: '2026-10-27T10:00:00Z' }]);
   });

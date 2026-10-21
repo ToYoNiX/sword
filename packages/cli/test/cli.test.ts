@@ -48,8 +48,8 @@ anchors:
 `;
 
 const tasks = {
-  'tasks/study-go.md': '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nwindow:\n  before: work.start or 08:00\nprefer: latest\n---\n',
-  'tasks/report.md': '---\ntitle: Write report\nduration: 2h\nwindow:\n  after: work\ndeadline: 2026-10-26\n---\n',
+  'tasks/study-go.md': '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nbefore: work.start or 08:00\nprefer: latest\n---\n',
+  'tasks/report.md': '---\ntitle: Write report\nduration: 2h\nafter: work\ndeadline: 2026-10-26\n---\n',
   'tasks/idea.md': '---\ntitle: Look into CalDAV\nduration: 30m\n---\n',
 };
 
@@ -101,8 +101,8 @@ describe('sword check', () => {
     const dir = await vault({
       'sword.yaml': config,
       'tasks/bad.md': '---\nduration: 45\n---\n',
-      'tasks/typo.md': '---\nduration: 30m\nwindow:\n  after: prayer.fajrr\n---\n',
-      'tasks/odd.md': '---\nduration: 30m\ncssclasses: [x]\n---\n',
+      'tasks/typo.md': '---\nduration: 30m\nafter: prayer.fajrr\n---\n',
+      'tasks/odd.md': '---\nduration: 30m\nbefor: 08:00\n---\n',
     });
     const result = await sword(['check'], dir);
     expect(result.code).toBe(1);
@@ -139,7 +139,7 @@ describe('sword plan', () => {
   it('marks done, pinned and missed occurrences', async () => {
     const dir = await vault({
       'sword.yaml': config,
-      'tasks/study-go.md': '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nwindow:\n  before: work.start or 08:00\nprefer: latest\npins:\n  2026-10-26: "06:30"\n---\n',
+      'tasks/study-go.md': '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nbefore: work.start or 08:00\nprefer: latest\npins:\n  - 2026-10-26 06:30\n---\n',
       'log/2026-10.jsonl': `${JSON.stringify({ at: '2026-10-25T10:00:00Z', occurrence: 'study-go@2026-10-25', state: 'done', start: '2026-10-25T05:15:00Z', end: '2026-10-25T06:00:00Z' })}\n`,
     });
     const out = (await sword(['plan', '--days', '2'], dir)).out;
@@ -150,7 +150,7 @@ describe('sword plan', () => {
   it('lists what could not be placed, with the reason', async () => {
     const dir = await vault({
       'sword.yaml': config,
-      'tasks/long.md': '---\ntitle: Long read\nduration: 10h\nrepeat: daily\nwindow:\n  before: work.start\n---\n',
+      'tasks/long.md': '---\ntitle: Long read\nduration: 10h\nrepeat: daily\nbefore: work.start\n---\n',
     });
     const out = (await sword(['plan', '--days', '1'], dir)).out;
     expect(out).toMatch(/Unplaced\n\s+Long read \(Sun 25 Oct\): no free 10h slot/);
@@ -162,6 +162,12 @@ describe('sword plan', () => {
     const out = (await sword(['plan', '--days', '2'], dir, '2026-10-25T17:00:00Z')).out;
     expect(out).not.toContain('Unplaced');
     expect(out).toContain('1 occurrence earlier today was not planned');
+  });
+
+  it('shows a note\'s file name when it has no title', async () => {
+    const dir = await vault({ 'sword.yaml': config, 'tasks/Read Al-Kahf.md': '---\nduration: 20m\nrepeat: daily\nafter: 07:00\n---\n' });
+    const out = (await sword(['plan', '--days', '1'], dir)).out;
+    expect(out).toContain('07:00–07:20  Read Al-Kahf');
   });
 
   it('prints the raw plan with --json', async () => {

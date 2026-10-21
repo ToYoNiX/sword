@@ -1,24 +1,27 @@
-# Calendrome — System Design
+# Sword — System Design
 
 > Status: draft · Started 2026-10-21
 
+The name comes from the Arabic saying *al-waqtu kas-sayf*, "time is like a
+sword" (see the [README](../README.md)).
+
 ## 1. Thesis
 
-**In Calendrome you describe the rules a task follows, and the schedule is computed from them.**
+**In Sword you describe the rules a task follows, and the schedule is computed from them.**
 
 Traditional calendars store *times*: "Study, 15:00–15:45, daily." When the world
 moves (prayer times shift, a meeting lands, the sun rises earlier), the stored
 time goes stale. Then the user drags the block by hand, or an AI agent places
 it on top of something it shouldn't.
 
-Calendrome stores *conditions*: "Study, 45 minutes, after Asr, before Maghrib,
+Sword stores *conditions*: "Study, 45 minutes, after Asr, before Maghrib,
 never overlapping a prayer." A deterministic scheduler turns those conditions
 into concrete times for each day. When the inputs change, it computes the times
 again. When no valid time exists, it says so and explains why. It never places
 a task on top of something it must not overlap.
 
 Think of a spreadsheet. A traditional calendar is a sheet of typed-in values.
-Calendrome is a sheet of formulas. Plugins supply the inputs (Fajr is 04:52
+Sword is a sheet of formulas. Plugins supply the inputs (Fajr is 04:52
 today), and the calendar view is the evaluated result.
 
 ## 2. The core idea
@@ -60,7 +63,7 @@ definitions.
 
 | Term | Meaning |
 |---|---|
-| **Event** | Something with an authoritative real-world time that Calendrome does not decide, e.g. an imported meeting or a holiday. Usually blocks time. |
+| **Event** | Something with an authoritative real-world time that Sword does not decide, e.g. an imported meeting or a holiday. Usually blocks time. |
 | **Anchor** | A named, resolvable reference in time, supplied by a provider for each logical day. It has a *window* and optionally a *busy* portion. Examples: `prayer.asr`, `sun.rise`, `work`, `day`. |
 | **Provider** | A component (usually a plugin) that resolves anchors for a given day and location. |
 | **Intention** | Something the user wants to do: a task, routine, or habit instance. Has a duration and rules, but no times. |
@@ -94,11 +97,16 @@ Rules can reference any edge explicitly:
 |---|---|
 | `prayer.asr.start` / `prayer.asr.end` | window edges |
 | `prayer.asr.busy.start` / `prayer.asr.busy.end` | busy edges |
-| `prayer.asr` with `after:` | `busy.end` if a busy portion exists, else `window.start` |
-| `prayer.asr` with `before:` | `busy.start` if a busy portion exists, else `window.start` |
+| `X` with `after:` | `busy.end` if X has a busy portion, else `window.end` |
+| `X` with `before:` | `busy.start` if X has a busy portion, else `window.start` |
+| `X` with `at:` | `busy.end` if X has a busy portion, else `window.start` |
 
-The shorthand defaults follow everyday language: "after Asr" means after I have
-prayed Asr, and "before Asr" means before I start praying it.
+The shorthand defaults follow everyday language. If an anchor has a busy
+portion, that's the part that matters: "after Asr" means after I have prayed,
+not after Asr's whole window ends at Maghrib. Otherwise the window is the thing
+itself: "after work" means after work ends, "before work" means before it
+starts, and "at afternoon" means when the afternoon starts. With several busy
+portions, "before" means before the first and "after" means after the last.
 
 Point-like anchors such as `sun.rise` simply have `window.start == window.end`
 and no busy portion. Constant times (`09:00`) are anchors of the same kind.
@@ -121,7 +129,28 @@ Each occurrence belongs to exactly one logical day, and anchors are resolved
 relative to that day. Within a day's rules, `prayer.isha` means *this logical
 day's* Isha even if it falls after midnight.
 
-### 4.3 Time zones and locations
+### 4.3 Day parts: anchors that always exist
+
+The core provides named parts of every day, so rules always have something to
+refer to, even with no plugins installed:
+
+```yaml
+# sword.yaml (defaults shown; change, add, or remove with null)
+day_parts:
+  morning:   { start: "05:00", end: "12:00" }
+  afternoon: { start: "12:00", end: "17:00" }
+  evening:   { start: "17:00", end: "21:00" }
+  night:     { start: "21:00", end: day.end }
+```
+
+They are ordinary anchors with a window and no busy portion, so
+`within: afternoon`, `before: evening` and `at: afternoon` all work. Times are
+read on the civil date (an end before the start wraps past midnight) and then
+clipped to the logical day, so with a day that starts at Fajr, the morning
+never starts before Fajr. They also give AI agents natural words to use
+("this afternoon").
+
+### 4.4 Time zones and locations
 
 - All instants are stored in UTC. All anchors are resolved in the user's
   configured time zone and location for that day.
@@ -164,6 +193,15 @@ A formula intention whose computed position violates a hard rule (e.g. it
 lands on a meeting) is **not moved**. It is reported as a conflict, because
 moving it would change what the user said.
 
+Every time rule (`at`, `after`, `before`, `within`) can list **fallbacks**,
+tried in order; the first that exists on that day is used:
+
+```yaml
+window:
+  after: prayer.fajr
+  before: work.start or 12:00     # no work on Friday → before noon
+```
+
 ### 5.2 Rule vocabulary (v1)
 
 | Rule | Kind | Example | Meaning |
@@ -172,37 +210,68 @@ moving it would change what the user said.
 | `window.after` | hard | `after: prayer.asr` | Start ≥ this instant |
 | `window.before` | hard | `before: prayer.maghrib` | End ≤ this instant |
 | `window.within` | hard | `within: work` | Entirely inside the anchor's window |
-| `avoid` | hard | `avoid: [tag:prayer]` | Must not overlap any busy interval matching the selector |
-| `deadline` | hard | `deadline: 2026-10-24` | The occurrence must be placed before this |
-| `depends_on` | hard | `depends_on: task:draft-outline` | Only after that occurrence is placed earlier (or done) |
-| `days` | hard | `days: [mon, tue, wed, thu]` | Restricts which logical days produce occurrences |
-| `prefer` | soft | `prefer: earliest` / `latest` / `near: sun.rise` | Ranking among valid slots |
-| `priority` | soft | `priority: 2` | Ordering when intentions compete for the same time |
-| `gap` | soft | `gap: 10m` | Preferred spacing from neighbors |
+| `avoid` | hard | `avoid: [tag:focus]` | Also keep clear of matching time that is *not* busy (see below) |
+| `deadline` | hard | `deadline: 2026-10-24` | Must end by this: a date means the end of that logical day, or an exact instant |
+| `date` | hard | `date: 2026-10-26` | A one-off belongs to this logical day (required for a one-off with `at`) |
+| `repeat` | hard | `repeat: { on: [mon, wed] }` | Which logical days get an occurrence (§5.4) |
+| `prefer` | soft | `prefer: earliest` / `latest` / `packed` | Which valid slot to take; `packed` is the smallest gap that fits (§6.4) |
+| `priority` | soft | `priority: 2` | Ordering when intentions compete; equal priority puts longer tasks first |
+| `depends_on` | hard | `depends_on: task:draft-outline` | *Later.* Only after that occurrence is placed earlier (or done) |
+| `gap` | soft | `gap: 10m` | *Later.* Preferred spacing from neighbors |
+| `prefer: near` | soft | `prefer: { near: sun.rise }` | *Later.* Closest valid slot to an anchor |
 
 Offsets (`+ 5m`, `- 15m`) apply to any anchor reference. Selectors (`tag:`,
-`anchor:`, `task:`, `calendar:`) pick sets of events, anchors, or intentions.
+`anchor:`, `event:`, `task:`) pick sets of events, anchors, or intentions.
 
-**Global hard rules** can be declared once instead of on every task. For
-example, `never overlap tag:prayer` applies to every flexible occurrence. This
-is how "the AI must never schedule into prayer time" becomes impossible to get
-wrong: an agent creates intentions, and the engine enforces the global rule
-whether or not the agent remembered it.
+**Busy time is always avoided.** No flexible occurrence may overlap anything
+busy: busy events, the busy portions of anchors, and other placed tasks. This
+needs no rule, so an agent that forgets to say "not during prayer" still can't
+schedule into prayer time. `avoid` is only for time that is *not* busy, such as
+a non-busy "focus" event, or an anchor without a busy portion (its whole window
+is avoided).
+
+**Global avoid rules** (`avoid` in `sword.yaml`) apply to every task, so
+"never during my kids' school run" is declared once.
 
 ### 5.3 Missing anchors
 
 Rules can reference anchors that don't exist on a given day (no `work` on
-Saturday). Each rule may set `if_missing`:
+Friday). There is no hidden policy for this. Either:
 
-- `block` (default): the occurrence is unplaced, with the reason "anchor `work.start` does not exist on Sat Oct 25".
-- `ignore`: drop this rule for that day.
-- `skip`: produce no occurrence that day.
+- the rule lists a **fallback** (`before: work.start or 12:00`, or
+  `within: gym_hours or evening`) and the first one that exists is used, or
+- there is no fallback, and the occurrence is **unplaced** with the reason:
+  "anchor `work` is not available on 2026-10-30".
+
+Day parts (§4.3) always exist, so they make good last fallbacks.
+
+An anchor id that doesn't exist on **any** day is not "missing" but an error on
+the intention (`unknown_anchor`), so typos like `prayer.fajrr` are caught
+instead of silently blocking every day.
 
 ### 5.4 Recurrence
 
-Recurrence uses RRULE semantics (RFC 5545), evaluated over **logical days**.
-`repeat: daily` is shorthand for `FREQ=DAILY`. Recurrence decides *which days*
-have an occurrence. Rules decide *where in the day* it goes.
+Recurrence decides *which days* have an occurrence. Rules decide *where in the
+day* it goes. Instead of the full RRULE language, which is hard to understand
+in every app that exposes it, there is a small fixed menu that maps directly
+to a UI:
+
+```yaml
+repeat: daily
+repeat: { on: [mon, wed, fri] }                       # weekly on these days
+repeat: { every: 2 days, since: 2026-10-21 }
+repeat: { every: 2 weeks, on: [mon], since: 2026-10-21 }
+repeat: { every: 3 months, on_day: 15, since: 2026-09-15 }
+```
+
+- `since` is the first possible date and the point "every N" counts from. The
+  app fills it in when the task is created. It is required when N > 1.
+- Weeks run Monday to Sunday; "every 2 weeks" counts whole weeks from the week
+  containing `since`.
+- A weekly repeat without `on` uses the weekday of `since`; a monthly one
+  without `on_day` uses its day of the month.
+- `on_day: 31` falls on the last day of shorter months.
+- Everything is counted in **logical days**.
 
 ### 5.5 The inbox
 
@@ -237,16 +306,29 @@ Greedy interval arithmetic is enough to start with.
 
 1. Resolve anchors and events for every logical day in the horizon.
 2. Generate occurrences from recurrence and one-off intentions.
-3. Place **pinned** placements and **formula** (`at:`) occurrences. Mark them
+3. Settle occurrences from history: `done` stays as history, a placement whose
+   time passed without completion becomes `missed`, and one that has already
+   started stays where it is: only the future is re-planned. There is no time
+   tracking; a task is either done or not done.
+4. Place **pinned** placements, then **formula** (`at:`) occurrences. Mark them
    busy. Record conflicts and do not move them.
-4. For each **fitted** occurrence, in order of (priority, deadline, id):
-   1. Compute the allowed region from the window rules.
-   2. Subtract busy intervals that match `avoid` and global hard rules.
-   3. Keep sub-intervals at least as long as the duration.
-   4. If the occurrence already has a valid placement, **keep it** (stability).
-   5. Otherwise pick the best slot according to its soft rules, then mark it busy.
-   6. If no slot exists, record it as unplaced with the binding reason.
-5. Diff the result against the current placements.
+5. Order the **fitted** occurrences: higher priority first, then **longer
+   first** (more work, and harder to fit later), then earlier deadline, then
+   earlier date, then id.
+6. In that order, **keep** every existing placement that is still valid
+   (stability), and mark it busy.
+7. In that order, place each remaining occurrence:
+   1. Compute the allowed region from the window rules and the deadline.
+   2. Subtract busy time and anything matched by `avoid` or global avoid rules.
+   3. Keep gaps at least as long as the duration, starting no earlier than now
+      (rounded up to the minute).
+   4. Pick a slot by `prefer` (earliest, latest, or packed), then mark it busy.
+      A one-off without a `date` tries each day up to its deadline; `packed`
+      compares gaps across all those days.
+   5. If no slot exists, record it as unplaced with the reason and what is in
+      the way.
+8. Diff the result against the existing placements: added, moved (with the
+   reason the old placement became invalid), removed, and newly missed.
 
 The scheduler sits behind an interface. A constraint solver can replace the
 greedy pass later without changing callers.
@@ -262,7 +344,32 @@ A plan should change as little as possible:
 - Every automatic move is recorded with its cause ("moved because Dhuhr shifted
   from 12:01 to 12:04 and overlapped") and can be undone.
 
-### 6.4 When the scheduler runs
+### 6.4 Packing: lessons from memory allocation
+
+Fitting tasks into free time is the same problem an operating system has when
+fitting allocations into free memory, and it has the same failure: **external
+fragmentation**, where there is enough free time in total but it is cut into
+gaps too small for what's left.
+
+> Free gaps: Mon 2h, Tue 1h, Wed 45m. Tasks: 30m, 1h, 1h45m.
+> Earliest-first in the given order: 30m → Mon, 1h → Mon, 1h45m fits nowhere.
+> Longest first, smallest gap that fits: 1h45m → Mon, 1h → Tue, 30m → Wed.
+
+| Memory management | Sword |
+|---|---|
+| Free memory | Free time in the window (a day, a sprint) |
+| Allocation request | Task with a duration |
+| First fit / best fit | `prefer: earliest` / `prefer: packed` |
+| Allocate largest first | Longer tasks go first at equal priority |
+| Out of memory | Unplaced occurrences, with reasons; a soft error, everything else stays scheduled |
+| Compaction | *Later:* "defragment my week", only on request and previewed, since it moves things |
+| Paging | *Later:* splitting a long task into chunks with a minimum size |
+
+Fitting the most work is NP-hard in general, so these are rules of thumb, not a
+search for the perfect plan. Daily routines usually want `earliest`; sprint and
+one-off work benefits from `packed`.
+
+### 6.5 When the scheduler runs
 
 - When a definition, event, or anchor changes (event driven).
 - When the horizon rolls forward each logical day.
@@ -324,21 +431,21 @@ Plugins are plain source repositories, referenced like Go modules, with no store
 and no publishing step:
 
 ```yaml
-# calendrome.yaml
+# sword.yaml
 plugins:
-  - github.com/toyonix/calendrome-prayer@v0.3.1
+  - github.com/toyonix/sword-prayer@v0.3.1
   - ./plugins/my-local-thing
 ```
 
-Installing a plugin works like `go get`, with no rebuild of Calendrome:
+Installing a plugin works like `go get`, with no rebuild of Sword:
 
 ```sh
-calendrome plugin add github.com/toyonix/calendrome-prayer@v0.3.1
+sword plugin add github.com/toyonix/sword-prayer@v0.3.1
 ```
 
 1. Clone the repo at that tag into the vault's plugin folder.
-2. Install its dependencies and bundle it (Calendrome ships the bundler).
-3. Record the resolved commit hash in `calendrome.lock` (like `go.sum`), so the
+2. Install its dependencies and bundle it (Sword ships the bundler).
+3. Record the resolved commit hash in `sword.lock` (like `go.sum`), so the
    same vault always loads the same plugin code.
 4. Load it at runtime.
 
@@ -360,7 +467,7 @@ its code, which is why versions are pinned and hashed.
 
 Following Obsidian, there are two tiers.
 
-**Core plugins** live in the main repository, ship with Calendrome, and can be
+**Core plugins** live in the main repository, ship with Sword, and can be
 turned on or off. They must be useful to everyone, whatever their culture,
 religion, or job:
 
@@ -368,40 +475,40 @@ religion, or job:
 - **sun**: sunrise, sunset, solar noon.
 - Later: **habits**, **sprints**, **templates** (named bundles of intentions and rules applied to a date range).
 
-**Official plugins** are maintained by the Calendrome project but live in
-their own repositories. They are installed with `calendrome plugin add`, like
+**Official plugins** are maintained by the Sword project but live in
+their own repositories. They are installed with `sword plugin add`, like
 any community plugin:
 
 - **prayer**: the five prayers as anchors, with calculation method, location,
   per-prayer busy portions, and iqama times.
 
 Nothing in the core or the core plugins may refer to a specific religion or
-culture. Calendrome is a general tool for "time that follows things that
+culture. Sword is a general tool for "time that follows things that
 move". Prayer times are one important example among others, such as Shabbat and
 zmanim, rotating work shifts, school timetables, tides, and medication
 intervals.
 
 ### 8.5 Plugins prove the plugin API
 
-Official plugins use only the public plugin API (`@calendrome/plugin-api`).
+Official plugins use only the public plugin API (`@sword/plugin-api`).
 They never import core internals. `prayer` lives in its own repository
-(`calendrome-prayer`) from day one, so the plugin path is exercised from the
+(`sword-prayer`) from day one, so the plugin path is exercised from the
 start. If prayer needs something the API doesn't offer, the API is incomplete.
 
-`@calendrome/plugin-api` follows the Obsidian model: it holds **types and small
-helpers only**. The runtime implementation is provided by Calendrome when it
+`@sword/plugin-api` follows the Obsidian model: it holds **types and small
+helpers only**. The runtime implementation is provided by Sword when it
 loads a plugin. A plugin therefore never bundles a copy of the core.
 
 Local development across the two repos:
 
 ```yaml
-# calendrome.yaml in a dev vault
+# sword.yaml in a dev vault
 plugins:
-  - ../calendrome-prayer          # local path, reloaded on change
+  - ../sword-prayer          # local path, reloaded on change
 ```
 
-and in `calendrome-prayer/package.json`, `@calendrome/plugin-api` points at the
-local checkout (`link:../calendrome/packages/plugin-api`) until the API is
+and in `sword-prayer/package.json`, `@sword/plugin-api` points at the
+local checkout (`link:../sword/packages/plugin-api`) until the API is
 stable enough to version.
 
 ## 9. Interfaces: one command layer
@@ -423,7 +530,7 @@ Agents can explore freely. Humans see a diff before accepting it.
 
 ### 9.2 MCP is built in
 
-- The MCP server is part of the Calendrome server process, not a separate
+- The MCP server is part of the Sword server process, not a separate
   script someone has to start.
 - **Local**: stdio or a localhost transport, authenticated by a local token.
 - **Remote**: HTTP transport with bearer tokens or OAuth, following the MCP
@@ -456,12 +563,12 @@ The engine must be usable without the server or UI. Given only a folder of
 files, a CLI can resolve, schedule, and output the result:
 
 ```sh
-calendrome plan                      # print today's computed schedule
-calendrome export --ics > out.ics    # compile the horizon to iCalendar
-calendrome sync caldav               # push placements to Radicale, etc.
+sword plan                      # print today's computed schedule
+sword export --ics > out.ics    # compile the horizon to iCalendar
+sword sync caldav               # push placements to Radicale, etc.
 ```
 
-Someone can edit intentions in Vim, keep the folder in git, and use Calendrome
+Someone can edit intentions in Vim, keep the folder in git, and use Sword
 as a "schedule compiler" that publishes to any CalDAV server. The UI, server,
 and MCP are layers on top of the same engine. They are not required to use it.
 
@@ -470,11 +577,11 @@ and MCP are layers on top of the same engine. They are not required to use it.
 iCalendar/CalDAV is the **exchange format, not the database.**
 
 - **Import**: external calendars become events, and are authoritative and
-  read-only from Calendrome's side. They can optionally be mapped to anchors
+  read-only from Sword's side. They can optionally be mapped to anchors
   (e.g. the "Work" calendar provides `work`).
 - **Export**: placements within the horizon are published as ordinary VEVENTs.
-  Each gets a stable UID in a Calendrome namespace and `X-CALENDROME-*`
-  properties, so Calendrome never imports its own output again.
+  Each gets a stable UID in a Sword namespace and `X-SWORD-*`
+  properties, so Sword never imports its own output again.
 - **Rules are never exported as RRULEs** with fixed times, because that is
   exactly what loses the behavior.
 - **External edits to exported events** (open question, §17) are either
@@ -502,13 +609,13 @@ those references into foreign keys.
 
 ```
 my-calendar/
-├── calendrome.yaml        # settings, plugins, global rules, day.start
+├── sword.yaml             # settings, plugins, global rules, day.start
 ├── intentions/
 │   ├── study-go.md
 │   └── write-report.md
 ├── log/
 │   └── 2026-10.jsonl      # done / missed / dropped events, append-only
-└── .calendrome/
+└── .sword/
     └── index.db           # SQLite, derived, safe to delete, not versioned
 ```
 
@@ -559,7 +666,7 @@ whether it is typed in Vim, sent over HTTP, or produced by an agent.
 
 ### 12.1 Topology: one node, many clients
 
-A **node** is a running Calendrome instance that owns one vault. It runs the
+A **node** is a running Sword instance that owns one vault. It runs the
 engine, the index, the HTTP API, the MCP endpoint, and serves the web UI. It is
 the same program whether it runs on a home server, a VPS, or the user's laptop.
 
@@ -603,7 +710,7 @@ The engine, plugins, server, and UI are all TypeScript (strict mode).
 - **One language per plugin.** A plugin's engine, I/O, and UI parts live in one
   package and one build. With a Go core, every plugin with UI would need both Go
   and TypeScript.
-- **Runtime loading.** Plugins are added without rebuilding Calendrome. A Go
+- **Runtime loading.** Plugins are added without rebuilding Sword. A Go
   core would need a recompile per plugin (the dwm/xcaddy model), which suits a
   single tinkerer but not an ecosystem, a desktop app, or a phone app.
 - **The engine runs everywhere.** The same engine and plugin code runs on the
@@ -656,22 +763,22 @@ packages/
   web/         React app
   plugin-api/  public API that every plugin builds against
 plugins/
-  ical/  sun/  core plugins, shipped with Calendrome
+  ical/  sun/  core plugins, shipped with Sword
 ```
 
-Official plugins live in sibling repositories, e.g. `calendrome-prayer`.
+Official plugins live in sibling repositories, e.g. `sword-prayer`.
 
 ### 13.5 Distribution
 
-- **v1**: an npm package (`npx calendrome serve`) and a Docker image for home
+- **v1**: an npm package (`npx sword serve`) and a Docker image for home
   servers.
 - **Later**: a single executable, and app shells for stage 2 (§12.3). The
   desktop and mobile shell technologies are decided at that stage.
 
 ### 13.6 Licensing
 
-Everything is **MIT**: the core, `@calendrome/plugin-api`, the core plugins, and
-`calendrome-prayer`. Plugins may use any license.
+Everything is **MIT**: the core, `@sword/plugin-api`, the core plugins, and
+`sword-prayer`. Plugins may use any license.
 
 ## 14. Principles
 
@@ -730,7 +837,7 @@ demanding case: anchors that move daily, strict exclusions, and tight windows.
 
 1. Morning Quran's time moves daily with Fajr, always exactly 5 minutes after the prayer's busy period ends.
 2. Study Go goes right after Morning Quran on every weekday and never touches a prayer.
-3. Saturday has no `work`, so Study Go is unplaced with the reason "anchor `work.start` missing", because `if_missing` defaults to `block`.
+3. Saturday has no `work`, so Study Go is unplaced with the reason "anchor `work` is not available", because its rule has no fallback.
 4. A meeting is added on day 2 inside Study Go's slot. Only that day's Study Go moves, and the plan explains why.
 5. The user pins Walk at 17:10 on day 4. Later the Asr anchor moves; the pin does not move and a conflict is reported if it now overlaps.
 6. Day 5's Fajr-to-work gap is shrunk to 30 minutes (test fixture). Study Go is unplaced on that day and nothing overlaps.

@@ -633,34 +633,41 @@ those references into foreign keys.
 ```
 my-calendar/
 ├── sword.yaml             # settings, plugins, global rules, day.start
-├── intentions/
-│   ├── study-go.md
-│   └── write-report.md
+├── sword.lock             # exact plugin versions (written by the app)
+├── tasks/
+│   ├── study-go.md        # one file per task; the file name is its id
+│   └── write-report.md    # subfolders are fine
 ├── log/
-│   └── 2026-10.jsonl      # done / missed / dropped events, append-only
-└── .sword/
-    └── index.db           # SQLite, derived, safe to delete, not versioned
+│   └── 2026-10.jsonl      # done / missed, one line each, append-only
+└── .sword/                # derived, safe to delete, not synced or versioned
+    ├── index.db
+    └── plugins/
 ```
+
+"Intention" is the internal word; on disk they are tasks. A task file without
+rules is simply in the inbox, so there is no inbox folder. Calendar feeds are
+settings in `sword.yaml`; their events are cached in the index because they can
+always be fetched again. Passwords and tokens never go in the vault, since it
+may be synced or versioned; they go in the system keyring.
 
 Plugins may add their own folders (e.g. `sprints/`) with the same rule: user
 intent goes in files, and computed state goes in the index.
 
-### 11.3 Intention files
+### 11.3 Task files
 
-Each intention is a Markdown file with YAML frontmatter, the same convention
+Each task is a Markdown file with YAML frontmatter, the same convention
 Obsidian uses:
 
 ```markdown
 ---
-id: study-go
 title: Study Go
 duration: 45m
 repeat: daily
 window:
   after: prayer.fajr
-  before: work.start
-prefer: earliest
-depends_on: [task:setup-env]
+  before: work.start or 08:00
+pins:
+  2026-10-26: "07:30"      # an occurrence moved by hand
 tags: [learning]
 ---
 
@@ -669,9 +676,27 @@ Working through chapter 7. Free-form notes go here.
 
 The frontmatter schema **is** the rule format. The same schema (as JSON Schema)
 defines the inputs of the API and the MCP tools, so a rule looks the same
-whether it is typed in Vim, sent over HTTP, or produced by an agent.
+whether it is typed in Vim, sent over HTTP, or produced by an agent. Unknown
+fields are warnings, not errors, so other tools can keep their own fields in
+the same file.
 
-### 11.4 Write path and consistency
+Pins live in the task file because they are decisions about that task: the
+key is the logical date of the occurrence, the value a local time. Pins on past
+dates are removed once their day has passed, so the list doesn't grow.
+
+### 11.4 The log
+
+What happened is appended to `log/YYYY-MM.jsonl`, one line per event:
+
+```json
+{"at":"2026-10-25T06:45:00Z","occurrence":"study@2026-10-25","state":"done","start":"2026-10-25T03:21:00Z","end":"2026-10-25T04:06:00Z"}
+```
+
+It is not kept in the task files: a daily task would collect hundreds of lines
+a year, and appending one line at a time means two devices syncing almost
+never conflict. For each occurrence, the last line wins.
+
+### 11.5 Write path and consistency
 
 - Every command writes the file first, then updates the index.
 - If the process crashes between the two steps, the index is reconciled from
@@ -694,7 +719,7 @@ engine, the index, the HTTP API, the MCP endpoint, and serves the web UI. It is
 the same program whether it runs on a home server, a VPS, or the user's laptop.
 
 Every other client (browser, desktop app, phone app, AI agent) talks to that
-node. Only the node writes to the vault (apart from external edits, §11.4) and
+node. Only the node writes to the vault (apart from external edits, §11.5) and
 only the node pushes to external calendars. This avoids sync conflicts and
 duplicate exports, and keeps tokens and permissions in one place.
 

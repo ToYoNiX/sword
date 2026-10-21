@@ -38,6 +38,13 @@ const intentionSchema = z.object({
   prefer: text.optional(),
   priority: z.number().optional(),
   tags: z.array(text).optional(),
+  /** Occurrences moved by hand: logical date → local time. */
+  pins: z
+    .record(
+      text.regex(/^\d{4}-\d{2}-\d{2}$/, 'expected a date like 2026-10-26'),
+      text.regex(/^\d{1,2}:\d{2}$/, 'expected a time like "07:30"'),
+    )
+    .optional(),
 });
 
 const FIELDS = new Set(Object.keys(intentionSchema.shape));
@@ -46,6 +53,8 @@ export interface IntentionFile {
   intention: IntentionInput;
   /** The Markdown body after the frontmatter. */
   notes: string;
+  /** Occurrences moved by hand: logical date → local time ("07:30"). */
+  pins: Record<string, string>;
 }
 
 /**
@@ -65,14 +74,19 @@ export function readIntentionFile(source: string, options: { id: string }): Resu
     return { ok: false, errors: [`invalid YAML in frontmatter: ${(error as Error).message}`], warnings: [] };
   }
   if (data === null || data === undefined) return { ok: false, errors: ['the frontmatter is empty'], warnings: [] };
-  const result = readIntention(data, options);
+  const result = readTask(data, options);
   if (!result.ok) return result;
   const notes = lines.slice(close + 1).join('\n').replace(/^\n+/, '');
-  return { ok: true, value: { intention: result.value, notes }, warnings: result.warnings };
+  return { ok: true, value: { ...result.value, notes }, warnings: result.warnings };
 }
 
 /** Reads already-parsed frontmatter (or a task entry in any YAML document). */
 export function readIntention(data: unknown, options: { id?: string } = {}): Result<IntentionInput> {
+  const result = readTask(data, options);
+  return result.ok ? { ...result, value: result.value.intention } : result;
+}
+
+function readTask(data: unknown, options: { id?: string }): Result<Omit<IntentionFile, 'notes'>> {
   if (!isMapping(data)) return { ok: false, errors: ['an intention must be a mapping of fields'], warnings: [] };
   const warnings = unknownKeys(data, FIELDS).map((key) => `unknown field "${key}"`);
   const parsed = intentionSchema.safeParse({ ...data, id: data['id'] ?? options.id });
@@ -108,7 +122,7 @@ export function readIntention(data: unknown, options: { id?: string } = {}): Res
       tags: raw.tags,
     }),
   };
-  return { ok: true, value: intention, warnings };
+  return { ok: true, value: { intention, pins: raw.pins ?? {} }, warnings };
 }
 
 /** Drops undefined fields, so outputs only contain what was written. */

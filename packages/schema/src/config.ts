@@ -1,6 +1,6 @@
 import { parse } from 'yaml';
 import { z } from 'zod';
-import type { DayPartInput } from '@sword/engine';
+import type { DayPartInput, FixedAnchorInput, Weekday } from '@sword/engine';
 import { isMapping, issues, unknownKeys } from './result.ts';
 import type { Result } from './result.ts';
 
@@ -12,6 +12,18 @@ const configSchema = z.object({
   horizon_days: z.number().optional(),
   avoid: z.array(text).optional(),
   day_parts: z.record(text, z.strictObject({ start: text, end: text }).nullable()).optional(),
+  anchors: z
+    .record(
+      text,
+      z.strictObject({
+        start: text,
+        end: text,
+        on: z.array(text).optional(),
+        busy: z.boolean().optional(),
+        tags: z.array(text).optional(),
+      }),
+    )
+    .optional(),
   plugins: z.array(text).optional(),
 });
 
@@ -24,6 +36,8 @@ export interface Config {
   horizonDays?: number;
   avoid?: string[];
   dayParts?: Record<string, DayPartInput | null>;
+  /** The `anchors` section: anchors at fixed times, e.g. work hours. */
+  fixedAnchors?: Record<string, FixedAnchorInput>;
   plugins: string[];
 }
 
@@ -49,5 +63,16 @@ export function readConfig(data: unknown): Result<Config> {
   if (raw.horizon_days !== undefined) config.horizonDays = raw.horizon_days;
   if (raw.avoid !== undefined) config.avoid = raw.avoid;
   if (raw.day_parts !== undefined) config.dayParts = raw.day_parts;
+  if (raw.anchors !== undefined) {
+    config.fixedAnchors = Object.fromEntries(
+      Object.entries(raw.anchors).map(([name, a]) => {
+        const anchor: FixedAnchorInput = { start: a.start, end: a.end };
+        if (a.on !== undefined) anchor.on = a.on as Weekday[];
+        if (a.busy !== undefined) anchor.busy = a.busy;
+        if (a.tags !== undefined) anchor.tags = a.tags;
+        return [name, anchor];
+      }),
+    );
+  }
   return { ok: true, value: config, warnings };
 }

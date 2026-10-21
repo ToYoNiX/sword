@@ -40,8 +40,25 @@ describe('readIntentionFile', () => {
           tags: ['learning'],
         },
         notes: 'Working through chapter 7.\n',
+        pins: {},
       },
     });
+  });
+
+  it('reads pins: occurrence dates moved to a time by hand', () => {
+    const result = readIntentionFile('---\nduration: 45m\nrepeat: daily\npins:\n  2026-10-26: "07:30"\n  2026-10-27: 06:45\n---\n', { id: 'study' });
+    expect(result).toMatchObject({ ok: true, value: { pins: { '2026-10-26': '07:30', '2026-10-27': '06:45' } } });
+    expect(result.ok && result.value.intention).not.toHaveProperty('pins');
+  });
+
+  it.each([
+    ['a pin with a bad date', 'pins:\n  tomorrow: "07:30"'],
+    ['a pin with a bad time', 'pins:\n  2026-10-26: "7.30"'],
+    ['pins that are a list', 'pins: ["07:30"]'],
+  ])('rejects %s', (_, yaml) => {
+    const result = readIntentionFile(`---\nduration: 45m\n${yaml}\n---\n`, { id: 'x' });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.errors.join('\n')).toContain('pins');
   });
 
   it('uses the id in the frontmatter over the file name', () => {
@@ -91,6 +108,10 @@ describe('readIntention', () => {
   it('accepts "daily"', () => {
     const result = readIntention({ id: 'x', duration: '30m', repeat: 'daily' });
     expect(result.ok && result.value.repeat).toBe('daily');
+  });
+
+  it('knows the pins field', () => {
+    expect(readIntention({ id: 'x', duration: '30m', pins: { '2026-10-26': '07:30' } })).toMatchObject({ ok: true, warnings: [] });
   });
 
   it('warns about unknown fields but keeps going, so other tools can share the file', () => {

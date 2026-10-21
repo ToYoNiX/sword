@@ -12,6 +12,9 @@ day_parts:
   morning: { start: "07:00", end: "12:00" }
   siesta: { start: "14:00", end: "16:00" }
   night: null
+anchors:
+  work: { start: "09:00", end: "17:00", on: [sun, mon], busy: true }
+  gym_hours: { start: 18:00, end: 21:00, tags: [sport] }
 plugins:
   - github.com/ToYoNiX/sword-prayer@v0.1.0
 `);
@@ -27,6 +30,10 @@ plugins:
           morning: { start: '07:00', end: '12:00' },
           siesta: { start: '14:00', end: '16:00' },
           night: null,
+        },
+        fixedAnchors: {
+          work: { start: '09:00', end: '17:00', on: ['sun', 'mon'], busy: true },
+          gym_hours: { start: '18:00', end: '21:00', tags: ['sport'] },
         },
         plugins: ['github.com/ToYoNiX/sword-prayer@v0.1.0'],
       },
@@ -57,6 +64,8 @@ describe('readConfig', () => {
     ['a day part without an end', { day_parts: { siesta: { start: '14:00' } } }, 'day_parts.siesta.end'],
     ['a day part with an extra field', { day_parts: { siesta: { start: '14:00', end: '16:00', color: 'red' } } }, 'color'],
     ['avoid that is not a list', { avoid: 'tag:prayer' }, 'avoid'],
+    ['an anchor without an end', { anchors: { work: { start: '09:00' } } }, 'anchors.work.end'],
+    ['an anchor with an extra field', { anchors: { work: { start: '09:00', end: '17:00', color: 'red' } } }, 'color'],
     ['a config that is a list', ['x'], 'mapping'],
   ])('rejects %s and names the field', (_, data, field) => {
     const result = readConfig(data);

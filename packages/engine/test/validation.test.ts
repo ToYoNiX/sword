@@ -28,8 +28,11 @@ describe('invalid intentions', () => {
   const base: IntentionInput = { id: 'bad', duration: '30m', window: { after: '08:00', before: '10:00' } };
 
   it.each<[string, Partial<IntentionInput>]>([
-    ['invalid_id', { id: 'has space' }],
     ['invalid_id', { id: 'a@b' }],
+    ['invalid_id', { id: '' }],
+    ['invalid_id', { id: ' padded' }],
+    ['invalid_id', { id: 'padded ' }],
+    ['invalid_id', { id: 'two\nlines' }],
     ['invalid_duration', { duration: '45' }],
     ['invalid_expression', { window: { after: 'prayer.fajr +' } }],
     ['unknown_anchor', { window: { after: 'prayer.fajrr' } }],
@@ -49,6 +52,8 @@ describe('invalid intentions', () => {
     ['invalid_within', { window: { within: 'prayer.fajr.start' } }],
     ['invalid_within', { window: { within: '08:00' } }],
     ['invalid_deadline', { deadline: 'next week' }],
+    ['invalid_deadline', { deadline: '2026-10-25T25:00:00' }],
+    ['invalid_deadline', { deadline: '2026-02-30T10:00' }],
     ['invalid_prefer', { prefer: 'soon' as never }],
     ['invalid_repeat', { repeat: 'hourly' as never }],
     ['invalid_selector', { avoid: ['prayer'] }],

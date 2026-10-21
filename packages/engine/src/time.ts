@@ -4,6 +4,7 @@ import type { Weekday } from './types.ts';
 
 const WEEKDAYS: readonly Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
 
 export function assertTimeZone(timeZone: string): void {
   try {
@@ -34,6 +35,23 @@ export function parsePlainDate(text: string): string {
 
 export function isPlainDate(text: string): boolean {
   return PLAIN_DATE.test(text);
+}
+
+/** A date and time with no offset, like Obsidian's "Date & time" properties. */
+export function isLocalDateTime(text: string): boolean {
+  return LOCAL_DATE_TIME.test(text);
+}
+
+export function parseLocalDateTime(text: string): string {
+  try {
+    return Temporal.PlainDateTime.from(text, { overflow: 'reject' }).toString();
+  } catch {
+    throw new ParseError(`invalid date and time "${text}"`);
+  }
+}
+
+export function localDateTimeMs(dateTime: string, timeZone: string): number {
+  return Temporal.PlainDateTime.from(dateTime).toZonedDateTime(timeZone).epochMilliseconds;
 }
 
 export function toIso(ms: number): string {

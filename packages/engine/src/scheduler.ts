@@ -27,7 +27,7 @@ import { occursOn } from './recurrence.ts';
 import type { Interval } from './interval.ts';
 import { parseSelector } from './selectors.ts';
 import type { Selector } from './selectors.ts';
-import { addDays, assertTimeZone, formatClock, parseInstant, toIso } from './time.ts';
+import { addDays, assertTimeZone, formatClock, localDateTimeMs, parseInstant, toIso } from './time.ts';
 import type {
   Conflict,
   DayInfo,
@@ -505,7 +505,9 @@ class Planner {
   private deadlineMs(intention: Intention): number {
     const { deadline } = intention;
     if (deadline === null) return Number.POSITIVE_INFINITY;
-    return deadline.kind === 'date' ? this.days.end(deadline.date) : deadline.ms;
+    if (deadline.kind === 'date') return this.days.end(deadline.date);
+    if (deadline.kind === 'local') return localDateTimeMs(deadline.dateTime, this.timeZone);
+    return deadline.ms;
   }
 
   private clock(ms: number): string {

@@ -98,7 +98,12 @@ describe('parseSelector', () => {
     expect(parseSelector('task:study')).toEqual({ type: 'task', value: 'study' });
   });
 
-  it.each(['prayer', 'color:red', 'tag:', ':prayer', 'tag: prayer'])('rejects %j', (text) => {
+  it('allows task ids with spaces and in any language, like note names', () => {
+    expect(parseSelector('task:Study Go')).toEqual({ type: 'task', value: 'Study Go' });
+    expect(parseSelector('task:قراءة الكهف')).toEqual({ type: 'task', value: 'قراءة الكهف' });
+  });
+
+  it.each(['prayer', 'color:red', 'tag:', ':prayer', 'tag: prayer', 'task:Study Go ', 'tag:a\nb'])('rejects %j', (text) => {
     expect(() => parseSelector(text)).toThrow(ParseError);
   });
 });

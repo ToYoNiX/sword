@@ -150,6 +150,16 @@ describe('fitting into a window', () => {
   });
 });
 
+describe('task ids', () => {
+  it('can be note names: spaces and any language', () => {
+    const plan = schedule(
+      input({ intentions: [daily('Study Go', '30m', window8to10), daily('قراءة الكهف', '30m', window8to10)] }),
+    );
+    expect(plan.errors).toEqual([]);
+    expect(plan.placements.map((p) => p.occurrenceId).sort()).toEqual([`Study Go@${D0}`, `قراءة الكهف@${D0}`].sort());
+  });
+});
+
 describe('competing tasks', () => {
   it('never puts two tasks on top of each other', () => {
     const scheduled = input({
@@ -337,6 +347,15 @@ describe('one-off tasks', () => {
     );
     expect(unplacedOf(plan, 'report').code).toBe('no_slot');
     expect(hasPlacement(plan, 'report')).toBe(false);
+  });
+
+  it('read a deadline without a time zone in the plan\'s time zone', () => {
+    const meeting = { id: 'standup', start: t(D0, '08:00'), end: t(D0, '08:30') };
+    const task = { id: 'report', duration: '1h', window: { after: '08:00', before: '12:00' } };
+    const tight = schedule(input({ events: [meeting], intentions: [{ ...task, deadline: `${D0}T09:00:00` }] }));
+    expect(unplacedOf(tight, 'report').code).toBe('no_slot');
+    const roomy = schedule(input({ events: [meeting], intentions: [{ ...task, deadline: `${D0}T10:00` }] }));
+    expect(slot(roomy, 'report')).toBe('08:30-09:30');
   });
 
   it('report a deadline that has already passed', () => {

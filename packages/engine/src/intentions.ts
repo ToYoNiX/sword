@@ -7,10 +7,14 @@ import { parseRepeat } from './recurrence.ts';
 import type { Recurrence } from './recurrence.ts';
 import { parseSelector } from './selectors.ts';
 import type { Selector } from './selectors.ts';
-import { isPlainDate, parseInstant, parsePlainDate } from './time.ts';
+import { isLocalDateTime, isPlainDate, parseInstant, parseLocalDateTime, parsePlainDate } from './time.ts';
 import type { IntentionInput, Issue, IssueCode, Preference } from './types.ts';
 
-export type Deadline = { readonly kind: 'date'; readonly date: string } | { readonly kind: 'instant'; readonly ms: number };
+export type Deadline =
+  | { readonly kind: 'date'; readonly date: string }
+  | { readonly kind: 'instant'; readonly ms: number }
+  /** A date and time without a time zone, read in the plan's time zone. */
+  | { readonly kind: 'local'; readonly dateTime: string };
 
 /** A validated intention. */
 export interface Intention {
@@ -38,7 +42,12 @@ export interface CompiledIntentions {
   readonly invalidIds: ReadonlySet<string>;
 }
 
-const ID = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+/**
+ * Ids are usually file names, so spaces and any language are fine. Not
+ * allowed: "@" (it separates id and date in occurrence ids), line breaks,
+ * and leading or trailing spaces.
+ */
+const ID = /^[^@\s](?:[^@\n\r\t]*[^@\s])?$/u;
 const PREFERENCES = new Set<unknown>(['earliest', 'latest', 'packed']);
 
 export function compileIntentions(
@@ -85,7 +94,7 @@ function compile(raw: IntentionInput, anchors: AnchorIndex, report: Report): Int
   };
 
   if (typeof raw.id !== 'string' || !ID.test(raw.id)) {
-    fail('invalid_id', `invalid id ${JSON.stringify(raw.id)}; use letters, digits, ".", "_" or "-"`);
+    fail('invalid_id', `invalid id ${JSON.stringify(raw.id)}: it can't be empty, contain "@" or line breaks, or start or end with a space`);
   }
 
   const minutes = attempt('invalid_duration', () => parseDuration(raw.duration));
@@ -143,10 +152,11 @@ function compile(raw: IntentionInput, anchors: AnchorIndex, report: Report): Int
     deadline = attempt('invalid_deadline', (): Deadline => {
       const text = raw.deadline as string;
       if (typeof text === 'string' && isPlainDate(text)) return { kind: 'date', date: parsePlainDate(text) };
+      if (typeof text === 'string' && isLocalDateTime(text)) return { kind: 'local', dateTime: parseLocalDateTime(text) };
       try {
         return { kind: 'instant', ms: parseInstant(text) };
       } catch {
-        throw new ParseError(`invalid deadline ${JSON.stringify(text)}; use YYYY-MM-DD or an ISO date-time`);
+        throw new ParseError(`invalid deadline ${JSON.stringify(text)}; use a date (2026-10-24) or a date and time (2026-10-24T17:00)`);
       }
     });
   }

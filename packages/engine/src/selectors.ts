@@ -7,7 +7,8 @@ export interface Selector {
   readonly value: string;
 }
 
-const SELECTOR = /^(tag|anchor|event|task):(\S+)$/;
+/** The value may contain spaces (task ids are file names), but not start or end with one. */
+const SELECTOR = /^(tag|anchor|event|task):(\S(?:[^\n\r\t]*\S)?)$/u;
 
 /** Parses "tag:prayer", "anchor:prayer.asr", "event:standup" or "task:study". */
 export function parseSelector(text: string): Selector {

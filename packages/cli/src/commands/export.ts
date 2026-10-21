@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { toIcs } from '../ics.ts';
+import { resolvePath } from '../io.ts';
 import type { Io } from '../io.ts';
 import { openVault } from '../vault.ts';
 import { computePlan } from './plan.ts';
@@ -21,7 +21,7 @@ export async function exportIcs(io: Io, options: ExportOptions): Promise<number>
   if (options.out === undefined) {
     io.out(ics);
   } else {
-    const path = resolve(io.cwd, options.out);
+    const path = resolvePath(io, options.out);
     await writeFile(path, ics);
     const count = plan.placements.filter((p) => p.state !== 'missed').length;
     io.out(`Wrote ${count} ${count === 1 ? 'event' : 'events'} to ${path}\n`);

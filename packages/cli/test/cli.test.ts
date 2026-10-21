@@ -33,7 +33,7 @@ async function sword(args: string[], cwd: string, now = '2026-10-24T21:00:00Z') 
   let out = '';
   let err = '';
   const code = await run(args, {
-    cwd,
+    cwd: () => cwd,
     now: () => now,
     out: (text) => (out += text),
     err: (text) => (err += text),
@@ -217,9 +217,46 @@ describe('sword export', () => {
 });
 
 describe('the sword command', () => {
+  const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));
+
   it('runs on plain Node, with no build step', async () => {
-    const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));
     const { stdout } = await promisify(execFile)(process.execPath, [main, '--help']);
     expect(stdout).toContain('sword plan');
+  });
+
+  /** Runs shell commands from inside a folder that is deleted first, like a shell left in a removed folder. */
+  async function fromDeletedFolder(commands: string): Promise<{ code: number; stdout: string; stderr: string }> {
+    const gone = join(await tempDir(), 'gone');
+    const script = `mkdir "${gone}" && cd "${gone}" && rm -rf "${gone}" && ${commands.replaceAll('$GONE', gone)}`;
+    // As when run from your shell: not under pnpm, which would set INIT_CWD.
+    const { INIT_CWD: _, ...env } = process.env;
+    return new Promise((done) => {
+      execFile('sh', ['-c', script], { env: { ...env, SWORD: `"${process.execPath}" "${main}"` } }, (error, stdout, stderr) => {
+        done({ code: error ? Number(error.code ?? 1) : 0, stdout, stderr });
+      });
+    });
+  }
+
+  it('can create a vault while the current folder no longer exists', async () => {
+    const target = join(await tempDir(), 'calendar');
+    const result = await fromDeletedFolder(`eval "$SWORD init ${target}"`);
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
+    expect(await readFile(join(target, 'sword.yaml'), 'utf8')).toContain('time_zone:');
+  });
+
+  it('uses the folder again once it has been recreated at the same path', async () => {
+    const result = await fromDeletedFolder('eval "$SWORD init $GONE" && eval "$SWORD plan --days 1"');
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
+    // The plan's header line (what's in the plan depends on the time of day).
+    expect(result.stdout).toMatch(/\n\S+ · now \w{3} \d+ \w{3} \d{2}:\d{2}\n/);
+  });
+
+  it('explains the problem, without a stack trace, when the folder is really gone', async () => {
+    const result = await fromDeletedFolder('eval "$SWORD plan"');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('the current folder no longer exists');
+    expect(result.stderr).not.toMatch(/^\s+at /m);
   });
 });

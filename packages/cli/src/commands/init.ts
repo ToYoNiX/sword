@@ -1,11 +1,11 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { CONFIG_FILE } from '@sword/vault';
-import { CliError } from '../io.ts';
+import { CliError, resolvePath } from '../io.ts';
 import type { Io } from '../io.ts';
 
 export async function init(io: Io, positionals: string[]): Promise<number> {
-  const dir = resolve(io.cwd, positionals[0] ?? '.');
+  const dir = resolvePath(io, positionals[0] ?? '.');
   if (await exists(join(dir, CONFIG_FILE))) throw new CliError(`${dir} is already a Sword vault (it has a ${CONFIG_FILE}).`);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 

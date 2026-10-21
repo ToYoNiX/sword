@@ -1,6 +1,9 @@
+import { isAbsolute, resolve } from 'node:path';
+
 /** Everything the CLI touches outside the vault, so tests can run it in-process. */
 export interface Io {
-  cwd: string;
+  /** The current folder; only asked for when a command needs it, since it may no longer exist. */
+  cwd: () => string;
   now: () => string;
   out: (text: string) => void;
   err: (text: string) => void;
@@ -15,6 +18,11 @@ export class CliError extends Error {
     super(message);
     this.code = code;
   }
+}
+
+/** A path from the command line; only a relative one needs the current folder. */
+export function resolvePath(io: Io, path: string): string {
+  return isAbsolute(path) ? path : resolve(io.cwd(), path);
 }
 
 const CODES = { bold: 1, dim: 2, red: 31, yellow: 33, green: 32 } as const;

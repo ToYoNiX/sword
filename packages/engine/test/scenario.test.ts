@@ -77,6 +77,11 @@ describe('acceptance scenario', () => {
   const base = scenario();
   const plan = schedule(base);
 
+  it('reports logical days that start at Fajr', () => {
+    expect(plan.days).toHaveLength(7);
+    expect(plan.days[0]).toMatchObject({ date: D0, start: t(D0, '04:50'), end: t(day(1), '04:51') });
+  });
+
   it('has no errors or warnings', () => {
     expect(plan.errors).toEqual([]);
     expect(plan.warnings).toEqual([]);

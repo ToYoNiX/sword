@@ -50,6 +50,35 @@ describe('time passing', () => {
     expect(plan.diff.missed).toEqual([`read@${D0}`]);
   });
 
+  it('marks yesterday\'s unfinished placements missed, even though yesterday is outside the horizon', () => {
+    const plan = schedule(
+      input({
+        now: t(day(1), '10:00'),
+        intentions: [read],
+        existing: [{ occurrenceId: `read@${D0}`, start: t(D0, '08:00'), end: t(D0, '08:30'), state: 'scheduled' }],
+      }),
+    );
+    expect(placement(plan, `read@${D0}`)).toMatchObject({ state: 'missed', date: D0 });
+    expect(plan.diff.missed).toEqual([`read@${D0}`]);
+    expect(plan.diff.removed).toEqual([]);
+  });
+
+  it('keeps done and missed placements from before the horizon as history', () => {
+    const scheduled = input({
+      now: t(day(2), '10:00'),
+      intentions: [read],
+      existing: [
+        { occurrenceId: `read@${D0}`, start: t(D0, '08:00'), end: t(D0, '08:30'), state: 'done' },
+        { occurrenceId: `read@${day(1)}`, start: t(day(1), '08:00'), end: t(day(1), '08:30'), state: 'missed' },
+      ],
+    });
+    const plan = schedule(scheduled);
+    expect(placement(plan, `read@${D0}`).state).toBe('done');
+    expect(placement(plan, `read@${day(1)}`).state).toBe('missed');
+    expectEmptyDiff(plan);
+    expectEmptyDiff(rerun(scheduled, plan));
+  });
+
   it('leaves a missed one-off task missed until the user acts on it', () => {
     const plan = schedule(
       input({

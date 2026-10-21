@@ -13,6 +13,7 @@
 import { buildAnchorIndex } from './anchors.ts';
 import type { AnchorIndex } from './anchors.ts';
 import { addDayParts, readDayParts } from './day-parts.ts';
+import type { DayPart } from './day-parts.ts';
 import { LogicalDays } from './day.ts';
 import { formatDuration } from './duration.ts';
 import { EngineInputError, ParseError } from './errors.ts';
@@ -28,6 +29,7 @@ import type { Selector } from './selectors.ts';
 import { addDays, assertTimeZone, formatClock, parseInstant, toIso } from './time.ts';
 import type {
   Conflict,
+  DayInfo,
   Diff,
   ExistingPlacement,
   Issue,
@@ -99,6 +101,7 @@ class Planner {
   private readonly invalidIds: ReadonlySet<string>;
   private readonly dates: readonly string[];
   private readonly dateSet: ReadonlySet<string>;
+  private readonly dayParts: readonly DayPart[];
   private readonly existing: Map<string, Stored>;
   private readonly pins: Map<string, number>;
 
@@ -143,7 +146,8 @@ class Planner {
     const today = this.days.dateOf(this.now);
     this.dates = Array.from({ length: input.horizonDays }, (_, i) => addDays(today, i));
     this.dateSet = new Set(this.dates);
-    addDayParts(readDayParts(input.dayParts, this.anchors), this.dates, this.days, this.anchors, this.timeZone);
+    this.dayParts = readDayParts(input.dayParts, this.anchors);
+    addDayParts(this.dayParts, this.dates, this.days, this.anchors, this.timeZone);
 
     const compiled = compileIntentions(input.intentions, this.anchors, this.errors);
     this.intentions = compiled.valid;
@@ -168,6 +172,7 @@ class Planner {
     this.warnAboutUnknownPins(known);
 
     const open = occurrences.filter((occurrence) => !this.settleFromHistory(occurrence));
+    this.settleBeforeHorizon(known);
     for (const occurrence of open) {
       const pin = this.pins.get(occurrence.id);
       if (pin !== undefined) this.placePinned(occurrence, pin);
@@ -241,6 +246,23 @@ class Planner {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Stored placements from days before the horizon have no occurrence this
+   * run, but are never dropped silently: done and missed stay as history, and
+   * unfinished ones become missed.
+   */
+  private settleBeforeHorizon(known: ReadonlySet<string>): void {
+    const firstDate = this.dates[0] as string;
+    for (const stored of this.existing.values()) {
+      if (known.has(stored.occurrenceId)) continue;
+      const intention = this.intentions.get(intentionIdOf(stored.occurrenceId));
+      if (!intention) continue;
+      const date = this.days.dateOf(stored.start);
+      if (date >= firstDate) continue;
+      this.settleFromHistory({ id: stored.occurrenceId, intention, date });
+    }
   }
 
   // ── fixed placements ─────────────────────────────────────────────────────
@@ -558,6 +580,7 @@ class Planner {
       (a, b) => compareNumber(Date.parse(a.start), Date.parse(b.start)) || compareText(a.occurrenceId, b.occurrenceId),
     );
     return {
+      days: this.dates.map((date) => this.dayInfo(date)),
       placements,
       unplaced: [...this.unplaced.values()].sort((a, b) => compareText(a.date ?? '~', b.date ?? '~') || compareText(a.occurrenceId, b.occurrenceId)),
       conflicts: [...this.conflicts].sort((a, b) => compareText(a.occurrenceId, b.occurrenceId)),
@@ -566,6 +589,14 @@ class Planner {
       errors: sortIssues(this.errors),
       warnings: sortIssues(this.warnings),
     };
+  }
+
+  private dayInfo(date: string): DayInfo {
+    const parts = this.dayParts.flatMap((part) => {
+      const anchor = this.anchors.get(part.name, date);
+      return anchor ? [{ name: part.name, start: toIso(anchor.window.start), end: toIso(anchor.window.end) }] : [];
+    });
+    return { date, start: toIso(this.days.start(date)), end: toIso(this.days.end(date)), parts };
   }
 
   private diff(placements: readonly Placement[], known: ReadonlySet<string>): Diff {

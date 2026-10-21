@@ -220,7 +220,17 @@ export interface Issue {
   occurrenceId?: string;
 }
 
+/** A logical day in the horizon, with its boundaries and day parts, for drawing. */
+export interface DayInfo {
+  date: string;
+  start: string;
+  end: string;
+  parts: { name: string; start: string; end: string }[];
+}
+
 export interface Plan {
+  /** The logical days of the horizon, in order. */
+  days: DayInfo[];
   placements: Placement[];
   unplaced: Unplaced[];
   conflicts: Conflict[];

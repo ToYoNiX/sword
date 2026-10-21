@@ -288,17 +288,22 @@ It exists but is not scheduled. There are three ways to schedule it:
 
 ```
 schedule(definitions, anchors, events, existing placements, horizon)
-  → Plan { placements, diff, unplaced[] with reasons }
+  → Plan { days, placements, diff, unplaced[] with reasons, conflicts }
 ```
 
 - **Deterministic**: the same inputs give the same plan. Ties are broken by
-  stable keys (priority, deadline, creation time, id).
+  stable keys (priority, length, deadline, date, id).
 - **Pure**: computing a plan changes nothing. Applying a plan is a separate,
   explicit step.
 - **Hard rules are never violated.** If no valid placement exists, the
   occurrence is unplaced and an explanation is returned.
 - **Explainable**: every placement and every failure can answer "why here?" or
   "why not?"
+- **Nothing is dropped silently**: every existing placement passed in comes
+  back as a placement (planned, done or missed) or as a removal with a reason.
+  This includes placements from days before the horizon.
+- **Days are part of the output**: each logical day's boundaries and day parts,
+  so a UI can draw them without re-implementing the day logic.
 
 ### 6.2 Algorithm (v1)
 
@@ -388,7 +393,9 @@ one-off work benefits from `packed`.
 
 ### 7.1 Missed occurrences
 
-Nothing is rescheduled automatically. What happens depends on the intention:
+A placement whose time has passed without being marked done becomes `missed`,
+including one from yesterday or earlier, outside the planning horizon. Nothing
+is rescheduled automatically. What happens next depends on the intention:
 
 - **Recurring** (has `repeat`, e.g. a habit or routine): the occurrence is
   recorded as `missed` and closed. That day's instance is gone, the next one is

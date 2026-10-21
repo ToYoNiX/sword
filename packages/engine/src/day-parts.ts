@@ -14,7 +14,7 @@ export const DEFAULT_DAY_PARTS: Readonly<Record<string, DayPartInput>> = {
   night: { start: '21:00', end: 'day.end' },
 };
 
-interface DayPart {
+export interface DayPart {
   readonly name: string;
   readonly start: TimeExpr;
   readonly end: TimeExpr;

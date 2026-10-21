@@ -50,6 +50,18 @@ describe('built-in day parts', () => {
     expect(slot(plan, `read@${D0}`)).toBe('06:00-06:30');
   });
 
+  it('are reported per logical day in the plan, for drawing', () => {
+    const plan = schedule(input({ horizonDays: 2 }));
+    expect(plan.days.map((d) => d.date)).toEqual([D0, day(1)]);
+    expect(plan.days[0]).toMatchObject({ start: t(D0, '00:00'), end: t(day(1), '00:00') });
+    expect(plan.days[0]?.parts).toEqual([
+      { name: 'afternoon', start: t(D0, '12:00'), end: t(D0, '17:00') },
+      { name: 'evening', start: t(D0, '17:00'), end: t(D0, '21:00') },
+      { name: 'morning', start: t(D0, '05:00'), end: t(D0, '12:00') },
+      { name: 'night', start: t(D0, '21:00'), end: t(day(1), '00:00') },
+    ]);
+  });
+
   it('can wrap past midnight', () => {
     const plan = schedule(
       input({

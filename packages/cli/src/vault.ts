@@ -7,6 +7,11 @@ import type { Io } from './io.ts';
 
 /** The context for commands: the vault given with --dir, or the one the current folder is in. */
 export async function context(io: Io, dir: string | undefined): Promise<Context> {
+  return { vault: fileVault(await vaultRoot(io, dir)), now: io.now };
+}
+
+/** The vault's folder: the one given with --dir, or the one the current folder is in. */
+export async function vaultRoot(io: Io, dir: string | undefined): Promise<string> {
   const root = dir === undefined ? await findVault(io.cwd()) : resolvePath(io, dir);
   if (root === null) {
     throw new CliError('not inside a Sword vault: no sword.yaml here or in any folder above.\nRun "sword init" to create one, or pass --dir.');
@@ -16,5 +21,5 @@ export async function context(io: Io, dir: string | undefined): Promise<Context>
   } catch {
     throw new CliError(`${root} is not a Sword vault: it has no ${CONFIG_FILE} (run "sword init" to create one)`);
   }
-  return { vault: fileVault(root), now: io.now };
+  return root;
 }

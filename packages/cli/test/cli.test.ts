@@ -290,6 +290,49 @@ describe('sword done', () => {
   });
 });
 
+describe('sword plugin add', () => {
+  const plugin = `export default { id: 'demo', anchors({ dates }) { return dates.map((date) => ({ id: 'demo.noon', date, start: date + 'T12:00:00Z' })); } };`;
+
+  async function pluginRepo(files: Record<string, string>): Promise<string> {
+    const dir = await tempDir();
+    for (const [name, content] of Object.entries(files)) await writeFile(join(dir, name), content);
+    const git = (...args: string[]) => promisify(execFile)('git', args, { cwd: dir });
+    await git('init', '-q');
+    await git('add', '.');
+    await git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'plugin');
+    return dir;
+  }
+
+  it('installs a plugin from a repository, then check lists it', async () => {
+    const source = await pluginRepo({ 'manifest.json': JSON.stringify({ id: 'demo', name: 'Demo', version: '0.1.0' }), 'main.js': plugin });
+    const dir = await vault({ 'sword.yaml': config });
+    const result = await sword(['plugin', 'add', source], dir);
+    expect(result).toMatchObject({ code: 0, err: '' });
+    expect(result.out).toBe(`Installed Demo 0.1.0 (demo) in .sword/plugins/${source.split('/').at(-1)}\n`);
+    expect(await readFile(join(dir, 'sword.yaml'), 'utf8')).toContain(`plugins:\n  - ${source}\n`);
+    expect((await sword(['check'], dir)).out).toBe('0 tasks, plugins: demo 0.1.0, no problems\n');
+  });
+
+  it('explains why a repository is not a plugin, and installs nothing', async () => {
+    const source = await pluginRepo({ 'README.md': 'not a plugin' });
+    const dir = await vault({ 'sword.yaml': config });
+    const result = await sword(['plugin', 'add', source], dir);
+    expect(result.code).toBe(1);
+    expect(result.err).toBe('sword: manifest.json: missing; a plugin needs manifest.json at the root of its repository\n');
+    expect(await readFile(join(dir, 'sword.yaml'), 'utf8')).toBe(config);
+  });
+
+  it.each([
+    [['plugin'], 'sword plugin add'],
+    [['plugin', 'remove', 'x'], 'unknown plugin command "remove"'],
+    [['plugin', 'add'], 'which plugin?'],
+  ])('rejects %j with usage', async (args, message) => {
+    const result = await sword(args, await vault({ 'sword.yaml': config }));
+    expect(result.code).toBe(2);
+    expect(result.err).toContain(message);
+  });
+});
+
 describe('sword export', () => {
   it('prints the plan as iCalendar', async () => {
     const dir = await vault({ 'sword.yaml': config, ...tasks });

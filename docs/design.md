@@ -172,7 +172,15 @@ them occupy time. Unlike day parts, they are not clipped to the logical day.
 
 - All instants are stored in UTC. All anchors are resolved in the user's
   configured time zone and location for that day.
-- Location can change per day (travel). Providers receive `(date, location, tz)`.
+- Location is a **core** setting in `sword.yaml`, next to `time_zone`, not a
+  setting of one plugin: several need it (prayer times, sunrise), and Sword
+  passes both to every provider with the dates it asks for.
+
+  ```yaml
+  time_zone: Africa/Cairo
+  location: { latitude: 30.0444, longitude: 31.2357 }
+  ```
+- Later, location can change per day (travel).
 - DST and time zone math is delegated to a mature library and never
   reimplemented.
 
@@ -473,40 +481,61 @@ time and new kinds of work.**
 A plugin can **add** rules but cannot bypass hard rules or write placements
 except through the scheduler.
 
+Plugins **extend, they never patch.** A plugin is a module whose default
+export says which extension points it uses; Sword calls it there. It cannot
+change, remove, or override anything in the core, so plugins stay independent
+of each other and of Sword's internals, and an update to Sword doesn't break
+them the way it breaks patches. A clash is an error, not a silent override:
+a plugin's anchors are named after its id (`prayer.fajr` from `prayer`), and
+an anchor provided twice is refused.
+
+For now the one extension point that exists is **anchors**; the others are
+added when a plugin needs them.
+
 ### 8.3 Distribution
 
-Plugins are plain source repositories, referenced like Go modules, with no store
-and no publishing step:
+Plugins work the way Obsidian's do. A plugin is a git repository with two
+files at its root, and no store or publishing step:
 
-```yaml
-# sword.yaml
-plugins:
-  - github.com/toyonix/sword-prayer@v0.3.1
-  - ./plugins/my-local-thing
-```
+- **`manifest.json`**: `{ "id": "prayer", "name": "Prayer times", "version": "0.1.0" }`.
+- **`main.js`**: the plugin as **one bundled ES module**. The author bundles
+  every library the plugin uses into it (with esbuild) and commits it, so
+  installing needs no npm. That matters beyond convenience: a phone or a
+  browser can't run `npm install`, but it can load one file.
 
-Installing a plugin works like `go get`, with no rebuild of Sword:
+Installing:
 
 ```sh
-sword plugin add github.com/toyonix/sword-prayer@v0.3.1
+sword plugin add https://github.com/ToYoNiX/sword-prayer
 ```
 
-1. Clone the repo at that tag into the vault's plugin folder.
-2. Install its dependencies and bundle it (Sword ships the bundler).
-3. Record the resolved commit hash in `sword.lock` (like `go.sum`), so the
-   same vault always loads the same plugin code.
-4. Load it at runtime.
+1. Clone the repository into the vault's `.sword/plugins/<name>/`.
+2. Check its `manifest.json` and load its `main.js`; if either is wrong, remove
+   the clone and say why.
+3. Add the URL to `plugins:` in `sword.yaml`.
 
-Each plugin has a manifest declaring its id, version, the anchors, rules, and
-commands it provides, its configuration schema, and its entry points:
+`sword.yaml` is synced and `.sword/` is not, so the list tells another device
+which plugins the vault needs; `sword check` reports one that isn't installed.
+There is no lock file: a plugin is whatever was cloned. A plugin's own
+settings go in `sword.yaml` under its id:
 
-- **`engine` entry**: anchor providers, rule types, scoring policies. These
-  must be **pure** (no file, network, or runtime-specific APIs), because they
-  run wherever the engine runs (§12.2), including a phone later.
-- **`node` entry** (optional): I/O work such as fetching iqama times from a
-  mosque website or talking to CalDAV. Results are handed to the engine as
-  inputs. They are never fetched during scheduling.
-- **`ui` entry** (optional): views, panels, and settings screens for the web UI.
+```yaml
+plugins:
+  - https://github.com/ToYoNiX/sword-prayer
+prayer:
+  method: egyptian
+```
+
+The plugin is a module that exports what it provides; Sword calls it with
+what it needs:
+
+- **`settings(raw)`**: checks its section of `sword.yaml`.
+- **`anchors({ dates, timeZone, location, settings })`**: its anchors for
+  those dates. Pure computation (no files, network, or runtime-specific APIs),
+  because it runs wherever the engine runs (§12.2), a phone included.
+
+I/O (e.g. fetching iqama times from a mosque) and views in the web UI come
+later, when a plugin needs them.
 
 Like Obsidian, a plugin runs with full trust. Installing one means trusting
 its code, which is why versions are pinned and hashed.
@@ -543,21 +572,14 @@ They never import core internals. `prayer` lives in its own repository
 (`sword-prayer`) from day one, so the plugin path is exercised from the
 start. If prayer needs something the API doesn't offer, the API is incomplete.
 
-`@sword/plugin-api` follows the Obsidian model: it holds **types and small
-helpers only**. The runtime implementation is provided by Sword when it
-loads a plugin. A plugin therefore never bundles a copy of the core.
+`@sword/plugin-api` follows the Obsidian model: it holds **types only**.
+Everything a plugin gets at run time (dates, time zone, location, its
+settings) is passed in by Sword when it calls the plugin, so a plugin never
+bundles any of Sword.
 
-Local development across the two repos:
-
-```yaml
-# sword.yaml in a dev vault
-plugins:
-  - ../sword-prayer          # local path, reloaded on change
-```
-
-and in `sword-prayer/package.json`, `@sword/plugin-api` points at the
-local checkout (`link:../sword/packages/plugin-api`) until the API is
-stable enough to version.
+While the API is young, `sword-prayer` points at the local checkout
+(`link:../sword/packages/plugin-api` in its `package.json`), and
+`sword plugin add` also takes a local path to a repository.
 
 ## 9. Interfaces: one command layer
 
@@ -731,14 +753,13 @@ the plugin that fetches it, which may keep a cache under `.sword/`.
 ```
 my-calendar/
 ├── sword.yaml             # settings, plugins, global rules, day.start
-├── sword.lock             # exact plugin versions (written by the app)
 ├── tasks/
 │   ├── study-go.md        # one file per task; the file name is its id
 │   └── write-report.md    # subfolders are fine
 ├── log/
 │   └── 2026-10.jsonl      # done / missed, one line each, append-only
 └── .sword/                # not synced or versioned
-    └── plugins/           # installed plugin code, and plugin caches
+    └── plugins/           # installed plugins: one cloned repository each
 ```
 
 "Intention" is the internal word; on disk they are tasks. A task file without

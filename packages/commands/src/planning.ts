@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { EngineInputError, schedule } from '@sword/engine';
 import type { Plan } from '@sword/engine';
-import { scheduleInput } from '@sword/vault';
+import { PluginError, scheduleInput } from '@sword/vault';
 import type { Vault } from '@sword/vault';
 import { CommandError } from './command.ts';
 import type { Context } from './command.ts';
@@ -25,12 +25,14 @@ export async function planVault(ctx: Context, horizonDays: number | undefined): 
   const fileErrors = vault.problems.filter((p) => p.level === 'error').length;
   if (fileErrors > 0) throw new CommandError('vault_errors', `${fileErrors} ${fileErrors === 1 ? 'problem' : 'problems'} in your files`);
   const now = ctx.now();
-  const input = scheduleInput(vault, { now, ...(horizonDays !== undefined && { horizonDays }) });
   let plan: Plan;
+  let input: ReturnType<typeof scheduleInput>;
   try {
+    input = scheduleInput(vault, { now, ...(horizonDays !== undefined && { horizonDays }) });
     plan = schedule(input);
   } catch (error) {
     if (error instanceof EngineInputError) throw new CommandError('vault_errors', `sword.yaml: ${error.message}`);
+    if (error instanceof PluginError) throw new CommandError('vault_errors', `plugin ${error.plugin}: ${error.message}`);
     throw error;
   }
   if (plan.errors.length > 0) {

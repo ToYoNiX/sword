@@ -1,5 +1,8 @@
 export { CONFIG_FILE, findVault, loadVault } from './load.ts';
 export { fileVault } from './access.ts';
+export { PluginError, pluginFolder } from './plugins.ts';
+export type { LoadedPlugin } from './plugins.ts';
+export { installPlugin } from './install.ts';
 export type { Problem, Task, Vault } from './load.ts';
 export { scheduleInput, timeZoneOf } from './input.ts';
 export type { InputOptions } from './input.ts';
@@ -8,7 +11,7 @@ export type { Applied } from './apply.ts';
 export { findTask, markDone, reopen } from './done.ts';
 export type { DoneRequest } from './done.ts';
 export { appendLog } from './log.ts';
-export { setProperties, setTimes, taskFile } from './write.ts';
+export { setProperties, setSettings, setTimes, taskFile } from './write.ts';
 export type { PropertyValue } from './write.ts';
 export { createTaskFile, trashTaskFile, updateTaskFile } from './files.ts';
 export { formatDate } from './times.ts';

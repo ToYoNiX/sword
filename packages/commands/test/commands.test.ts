@@ -168,7 +168,7 @@ describe('done and undo_done', () => {
   it('work against any storage that provides the VaultAccess interface', async () => {
     const memory: Vault = {
       root: 'memory:',
-      config: { timeZone: 'UTC', plugins: [] },
+      config: { timeZone: 'UTC', plugins: [], other: {} },
       tasks: [
         {
           id: 'walk',
@@ -181,6 +181,7 @@ describe('done and undo_done', () => {
         },
       ],
       log: [],
+      plugins: [],
       problems: [],
     };
     const logged: LogEntry[] = [];
@@ -203,7 +204,7 @@ describe('check and export', () => {
   it('check lists problems by file', async () => {
     const root = await vault({ 'sword.yaml': settings, 'tasks/study.md': study, 'tasks/typo.md': '---\nduration: 30m\nafter: prayer.fajrr\n---\n' });
     const result = await invoke(check, context(root), {});
-    expect(result).toEqual({ tasks: 2, problems: [expect.objectContaining({ file: 'tasks/typo.md', level: 'error', message: expect.stringContaining('prayer.fajrr') })] });
+    expect(result).toEqual({ tasks: 2, plugins: [], problems: [expect.objectContaining({ file: 'tasks/typo.md', level: 'error', message: expect.stringContaining('prayer.fajrr') })] });
   });
 
   it('export returns the plan as iCalendar', async () => {

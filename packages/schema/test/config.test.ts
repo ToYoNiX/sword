@@ -36,12 +36,13 @@ plugins:
           gym_hours: { start: '18:00', end: '21:00', tags: ['sport'] },
         },
         plugins: ['github.com/ToYoNiX/sword-prayer@v0.1.0'],
+        other: {},
       },
     });
   });
 
   it('accepts an empty file', () => {
-    expect(readConfigFile('')).toEqual({ ok: true, warnings: [], value: { plugins: [] } });
+    expect(readConfigFile('')).toEqual({ ok: true, warnings: [], value: { plugins: [], other: {} } });
   });
 
   it('reads unquoted times as text', () => {
@@ -55,8 +56,20 @@ plugins:
 });
 
 describe('readConfig', () => {
-  it('warns about unknown settings', () => {
-    expect(readConfig({ day_strat: '05:00' })).toMatchObject({ ok: true, warnings: ['unknown setting "day_strat"'] });
+  it('reads the location', () => {
+    expect(readConfig({ location: { latitude: 30.0444, longitude: 31.2357 } })).toMatchObject({
+      ok: true,
+      value: { location: { latitude: 30.0444, longitude: 31.2357 } },
+    });
+  });
+
+  it('keeps other settings as they are, for plugins: only the vault knows which are installed', () => {
+    const result = readConfig({ time_zone: 'Africa/Cairo', prayer: { method: 'egyptian' }, day_strat: '05:00' });
+    expect(result).toEqual({
+      ok: true,
+      warnings: [],
+      value: { timeZone: 'Africa/Cairo', plugins: [], other: { prayer: { method: 'egyptian' }, day_strat: '05:00' } },
+    });
   });
 
   it.each([
@@ -67,6 +80,12 @@ describe('readConfig', () => {
     ['an anchor without an end', { anchors: { work: { start: '09:00' } } }, 'anchors.work.end'],
     ['an anchor with an extra field', { anchors: { work: { start: '09:00', end: '17:00', color: 'red' } } }, 'color'],
     ['a config that is a list', ['x'], 'mapping'],
+    ['a location without a longitude', { location: { latitude: 30 } }, 'location.longitude'],
+    ['a latitude out of range', { location: { latitude: 91, longitude: 31 } }, 'location.latitude'],
+    ['a longitude out of range', { location: { latitude: 30, longitude: -181 } }, 'location.longitude'],
+    ['a location written as text', { location: 'Cairo' }, 'location'],
+    ['a location with an extra field', { location: { latitude: 30, longitude: 31, city: 'Cairo' } }, 'city'],
+    ['plugins that are not a list', { plugins: 'https://github.com/ToYoNiX/sword-prayer' }, 'plugins'],
   ])('rejects %s and names the field', (_, data, field) => {
     const result = readConfig(data);
     expect(result.ok).toBe(false);

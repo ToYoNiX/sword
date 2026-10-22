@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { EngineInputError, schedule } from '@sword/engine';
-import { scheduleInput } from '@sword/vault';
+import { PluginError, scheduleInput } from '@sword/vault';
 import type { Problem, Vault } from '@sword/vault';
 import { defineCommand } from '../command.ts';
 
 export interface CheckResult {
   tasks: number;
+  /** The plugins that loaded. */
+  plugins: { id: string; version: string }[];
   /** Every problem, by file: what the files say and what the engine says. */
   problems: Problem[];
 }
@@ -23,11 +25,17 @@ export const check = defineCommand({
       for (const e of plan.errors) problems.push({ file: fileOf(vault, e.intentionId), level: 'error', message: e.message });
       for (const w of plan.warnings) problems.push({ file: fileOf(vault, w.intentionId ?? w.occurrenceId), level: 'warning', message: w.message });
     } catch (error) {
-      if (!(error instanceof EngineInputError)) throw error;
-      problems.push({ file: 'sword.yaml', level: 'error', message: error.message });
+      if (error instanceof PluginError) {
+        const folder = vault.plugins.find((p) => p.id === error.plugin)?.folder;
+        problems.push({ file: `${folder}/main.js`, level: 'error', message: `${error.plugin}: ${error.message}` });
+      } else if (error instanceof EngineInputError) {
+        problems.push({ file: 'sword.yaml', level: 'error', message: error.message });
+      } else {
+        throw error;
+      }
     }
     problems.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-    return { tasks: vault.tasks.length, problems };
+    return { tasks: vault.tasks.length, plugins: vault.plugins.map((p) => ({ id: p.id, version: p.version })), problems };
   },
 });
 

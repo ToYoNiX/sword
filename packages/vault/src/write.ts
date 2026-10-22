@@ -54,6 +54,16 @@ export function setProperties(source: string, changes: Readonly<Record<string, P
 }
 
 /**
+ * Sets top-level settings in a YAML settings file (sword.yaml) the same way:
+ * only their lines change, so comments and formatting stay.
+ */
+export function setSettings(source: string, changes: Readonly<Record<string, PropertyValue | undefined>>): string {
+  const body = source.endsWith('\n') || source === '' ? source : `${source}\n`;
+  const updated = setProperties(`---\n${body}---\n`, changes);
+  return updated.slice('---\n'.length, -'---\n'.length);
+}
+
+/**
  * Sets the `pins` and `planned` lists (local date-times like
  * "2026-10-26T07:30"), written the way Obsidian users write them:
  * "2026-10-26 07:30".

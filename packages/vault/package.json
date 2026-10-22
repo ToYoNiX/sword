@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@sword/engine": "workspace:*",
+    "@sword/plugin-api": "workspace:*",
     "@sword/schema": "workspace:*",
     "temporal-polyfill": "^1.0.6",
     "yaml": "^2.9.1"

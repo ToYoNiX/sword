@@ -266,6 +266,12 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
+  packages/plugin-api:
+    devDependencies:
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/schema:
     dependencies:
       '@sword/engine':
@@ -293,6 +299,9 @@ importers:
       '@sword/engine':
         specifier: workspace:*
         version: link:../engine
+      '@sword/plugin-api':
+        specifier: workspace:*
+        version: link:../plugin-api
       '@sword/schema':
         specifier: workspace:*
         version: link:../schema

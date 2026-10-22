@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { EngineInputError, schedule } from '@sword/engine';
 import { readIntentionFile } from '@sword/schema';
-import { findTask, scheduleInput, setProperties, taskFile } from '@sword/vault';
+import { PluginError, findTask, scheduleInput, setProperties, taskFile } from '@sword/vault';
 import type { PropertyValue, Task, Vault } from '@sword/vault';
 import { CommandError, defineCommand } from '../command.ts';
 
@@ -142,6 +142,7 @@ function validate(vault: Vault, id: string, file: string, content: string, repla
     errors = plan.errors.filter((e) => e.intentionId === id).map((e) => e.message);
   } catch (error) {
     if (error instanceof EngineInputError) throw new CommandError('vault_errors', `sword.yaml: ${error.message}`);
+    if (error instanceof PluginError) throw new CommandError('vault_errors', `plugin ${error.plugin}: ${error.message}`);
     throw error;
   }
   if (errors.length > 0) throw new CommandError('invalid_input', errors.join('; '));

@@ -4,13 +4,14 @@ import type { Io } from '../io.ts';
 import { context } from '../vault.ts';
 
 export async function check(io: Io, dir: string | undefined): Promise<number> {
-  const { tasks, problems } = await invoke(checkVault, await context(io, dir), {});
+  const { tasks, plugins, problems } = await invoke(checkVault, await context(io, dir), {});
   for (const p of problems) {
     io.out(`${p.file}: ${p.level === 'error' ? paint(io, 'red', 'error') : paint(io, 'yellow', 'warning')}: ${p.message}\n`);
   }
   const errors = problems.filter((p) => p.level === 'error').length;
   const warnings = problems.length - errors;
-  const count = `${tasks} ${tasks === 1 ? 'task' : 'tasks'}`;
+  const installed = plugins.length === 0 ? '' : `, plugins: ${plugins.map((p) => `${p.id} ${p.version}`).join(', ')}`;
+  const count = `${tasks} ${tasks === 1 ? 'task' : 'tasks'}${installed}`;
   io.out(
     problems.length === 0
       ? `${count}, no problems\n`

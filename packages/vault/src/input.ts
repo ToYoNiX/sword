@@ -2,6 +2,7 @@ import { Temporal } from 'temporal-polyfill';
 import { parseDuration } from '@sword/engine';
 import type { ExistingPlacement, Pin, ScheduleInput } from '@sword/engine';
 import type { Task, Vault } from './load.ts';
+import { pluginAnchors } from './plugins.ts';
 import { toInstant } from './times.ts';
 
 export interface InputOptions {
@@ -45,6 +46,13 @@ export function scheduleInput(vault: Vault, options: InputOptions): ScheduleInpu
   if (config.dayParts !== undefined) input.dayParts = config.dayParts;
   if (config.fixedAnchors !== undefined) input.fixedAnchors = config.fixedAnchors;
   if (config.avoid !== undefined) input.avoid = config.avoid;
+  if (vault.plugins.length > 0) {
+    // From the day before today (a logical day may start the civil day before)
+    // to the day after the plan (windows run into the next day).
+    const today = Temporal.Instant.from(options.now).toZonedDateTimeISO(timeZone).toPlainDate();
+    const dates = Array.from({ length: input.horizonDays + 2 }, (_, i) => today.add({ days: i - 1 }).toString());
+    input.anchors = pluginAnchors(vault.plugins, dates, timeZone, config);
+  }
   return input;
 }
 

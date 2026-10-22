@@ -4,6 +4,8 @@ import { readConfigFile, readIntentionFile, readLog } from '@sword/schema';
 import type { Config, LogEntry } from '@sword/schema';
 import type { IntentionInput } from '@sword/engine';
 import { VaultError } from './errors.ts';
+import { loadPlugins } from './plugins.ts';
+import type { LoadedPlugin } from './plugins.ts';
 
 export const CONFIG_FILE = 'sword.yaml';
 
@@ -34,6 +36,8 @@ export interface Vault {
   tasks: Task[];
   /** The latest log entry for each occurrence. */
   log: LogEntry[];
+  /** Plugins listed in sword.yaml that loaded. */
+  plugins: LoadedPlugin[];
   /** Problems in single files. Those files (or lines) are skipped; the rest is read. */
   problems: Problem[];
 }
@@ -55,7 +59,8 @@ export async function loadVault(path: string): Promise<Vault> {
   const configResult = readConfigFile(configSource);
   problems.push(...configResult.warnings.map((message) => ({ file: CONFIG_FILE, level: 'warning' as const, message })));
   if (!configResult.ok) problems.push(...configResult.errors.map((message) => ({ file: CONFIG_FILE, level: 'error' as const, message })));
-  const config: Config = configResult.ok ? configResult.value : { plugins: [] };
+  const config: Config = configResult.ok ? configResult.value : { plugins: [], other: {} };
+  const plugins = await loadPlugins(root, config, problems);
 
   const tasks: Task[] = [];
   for (const file of await listFiles(root, 'tasks', '.md')) {
@@ -79,7 +84,7 @@ export async function loadVault(path: string): Promise<Vault> {
   }
   const log = [...latest.values()].sort((a, b) => (a.occurrenceId < b.occurrenceId ? -1 : 1));
 
-  return { root, config, tasks, log, problems };
+  return { root, config, tasks, log, plugins, problems };
 }
 
 /** The vault containing `path`: the nearest folder upwards with a sword.yaml. */

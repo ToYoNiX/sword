@@ -11,12 +11,14 @@
  *   repeat_since date     the first possible date, and where "every N" counts from
  *   at, after, before, within   text
  *   date, deadline               date (deadline may also be a date and time)
- *   avoid, tags, pins            list
+ *   avoid, tags                  list
+ *   pins, planned                list of local date-times: 2026-10-26 07:30
  *   prefer text, priority number, title text, id text
  *
  * This file checks the properties and maps them to the engine's input. What
  * the values mean (is "prayer.fajrr" a real anchor?) is left to the engine.
  */
+import { Temporal } from 'temporal-polyfill';
 import { parse } from 'yaml';
 import type { IntentionInput, Preference, Repeat, Weekday } from '@sword/engine';
 import { isMapping } from './result.ts';
@@ -26,8 +28,10 @@ export interface IntentionFile {
   intention: IntentionInput;
   /** The Markdown body after the frontmatter. */
   notes: string;
-  /** Occurrences moved by hand: logical date → local time ("07:30"). */
-  pins: Record<string, string>;
+  /** Occurrences moved by hand, as local date-times ("2026-10-26T07:30"). */
+  pins: string[];
+  /** Where Sword placed occurrences when a plan was applied, in the same form. */
+  planned: string[];
 }
 
 const PROPERTIES = [
@@ -50,6 +54,7 @@ const PROPERTIES = [
   'priority',
   'tags',
   'pins',
+  'planned',
 ] as const;
 
 const KNOWN = new Set<string>(PROPERTIES);
@@ -57,7 +62,7 @@ const WEEKDAYS = new Set(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
 const PREFERENCES = new Set(['earliest', 'latest', 'packed']);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DEADLINE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/;
-const PIN = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2})$/;
+const LOCAL_TIME = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2})(:\d{2}(?::\d{2})?)$/;
 
 /**
  * Reads a task file: YAML frontmatter between `---` lines, then notes.
@@ -113,7 +118,8 @@ function readTask(data: unknown, options: { id?: string }): Result<Omit<Intentio
   if (prefer !== undefined && !PREFERENCES.has(prefer)) errors.push(`prefer: use earliest, latest or packed, not "${prefer}"`);
   const priority = read.number('priority');
   if (priority !== undefined && !Number.isInteger(priority)) errors.push(`priority: must be a whole number, not ${priority}`);
-  const pins = readPins(read, errors);
+  const pins = readTimes(read, 'pins', errors);
+  const planned = readTimes(read, 'planned', errors);
 
   const window = defined({ after: read.text('after'), before: read.text('before'), within: read.text('within') });
   const intention = defined({
@@ -130,7 +136,7 @@ function readTask(data: unknown, options: { id?: string }): Result<Omit<Intentio
   });
 
   if (errors.length > 0 || id === undefined || duration === undefined) return { ok: false, errors, warnings };
-  return { ok: true, value: { intention: { id, duration, ...intention }, pins }, warnings };
+  return { ok: true, value: { intention: { id, duration, ...intention }, pins, planned }, warnings };
 }
 
 /** The repeat properties, as the engine's repeat. */
@@ -172,25 +178,34 @@ function readRepeat(read: Reader, errors: string[]): Repeat | undefined {
   return defined({ every: `${n} ${n === 1 ? 'month' : 'months'}`, onDay: day, since });
 }
 
-/** pins: a list of "2026-10-26 07:30", as a date → time mapping. */
-function readPins(read: Reader, errors: string[]): Record<string, string> {
-  const raw = read.data['pins'];
-  if (isMapping(raw)) {
-    errors.push('pins: use a list of dates and times, like "- 2026-10-26 07:30"');
-    return {};
+/**
+ * A list of local date-times like "2026-10-26 07:30", normalized to
+ * "2026-10-26T07:30". They are real local times; the engine works out which
+ * day's occurrence each belongs to, so two on one date can be fine.
+ */
+function readTimes(read: Reader, name: 'pins' | 'planned', errors: string[]): string[] {
+  if (isMapping(read.data[name])) {
+    errors.push(`${name}: use a list of dates and times, like "- 2026-10-26 07:30"`);
+    return [];
   }
-  const pins: Record<string, string> = {};
-  for (const pin of read.list('pins') ?? []) {
-    const match = PIN.exec(pin);
+  const times: string[] = [];
+  for (const text of read.list(name) ?? []) {
+    const match = LOCAL_TIME.exec(text);
     if (!match) {
-      errors.push(`pins: "${pin}" is not a date and time like 2026-10-26 07:30`);
+      errors.push(`${name}: "${text}" is not a date and time like 2026-10-26 07:30`);
       continue;
     }
-    const [, date = '', time = ''] = match;
-    if (date in pins) errors.push(`pins: ${date} is pinned twice`);
-    pins[date] = time;
+    const [, date = '', hour = '', rest = ''] = match;
+    const time = `${date}T${hour.padStart(2, '0')}${rest}`;
+    try {
+      Temporal.PlainDateTime.from(time, { overflow: 'reject' });
+    } catch {
+      errors.push(`${name}: "${text}" is not a real date and time`);
+      continue;
+    }
+    times.push(time);
   }
-  return pins;
+  return times;
 }
 
 /** Reads typed properties, recording an error for each one of the wrong type. */

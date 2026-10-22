@@ -212,6 +212,9 @@ importers:
       '@sword/engine':
         specifier: workspace:*
         version: link:../engine
+      temporal-polyfill:
+        specifier: ^1.0.6
+        version: 1.0.6
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -237,6 +240,9 @@ importers:
       temporal-polyfill:
         specifier: ^1.0.6
         version: 1.0.6
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       '@types/node':
         specifier: ^26.6.5

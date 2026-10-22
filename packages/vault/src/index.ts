@@ -1,5 +1,12 @@
 export { CONFIG_FILE, findVault, loadVault } from './load.ts';
 export type { Problem, Task, Vault } from './load.ts';
-export { scheduleInput } from './input.ts';
+export { scheduleInput, timeZoneOf } from './input.ts';
 export type { InputOptions } from './input.ts';
+export { applyPlan } from './apply.ts';
+export type { Applied } from './apply.ts';
+export { markDone, reopen } from './done.ts';
+export type { DoneRequest } from './done.ts';
+export { appendLog } from './log.ts';
+export { setTimes } from './write.ts';
+export { formatDate } from './times.ts';
 export { VaultError } from './errors.ts';

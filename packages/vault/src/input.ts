@@ -1,6 +1,8 @@
 import { Temporal } from 'temporal-polyfill';
-import type { Pin, ScheduleInput } from '@sword/engine';
-import type { Vault } from './load.ts';
+import { parseDuration } from '@sword/engine';
+import type { ExistingPlacement, Pin, ScheduleInput } from '@sword/engine';
+import type { Task, Vault } from './load.ts';
+import { toInstant } from './times.ts';
 
 export interface InputOptions {
   now: string;
@@ -8,20 +10,36 @@ export interface InputOptions {
   horizonDays?: number;
 }
 
+/** The vault's time zone: the settings, or this computer's. */
+export function timeZoneOf(vault: Vault): string {
+  return vault.config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 /**
  * The engine input for a vault. Anchors from plugins and events from
  * calendars are not wired in yet; fixed anchors and day parts are.
+ *
+ * What the plan remembers comes from the files: `planned` and `pins` in each
+ * task (by task, so the engine finds the day), then the log, which wins.
  */
 export function scheduleInput(vault: Vault, options: InputOptions): ScheduleInput {
   const { config } = vault;
-  const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timeZone = timeZoneOf(vault);
   const input: ScheduleInput = {
     timeZone,
     now: options.now,
     horizonDays: options.horizonDays ?? config.horizonDays ?? 7,
     intentions: vault.tasks.map((t) => t.intention),
-    pins: pins(vault, timeZone),
-    existing: vault.log.map(({ occurrenceId, start, end, state }) => ({ occurrenceId, start, end, state })),
+    pins: vault.tasks.flatMap((task) => task.pins.map((time): Pin => ({ intentionId: task.id, start: toInstant(time, timeZone) }))),
+    existing: [
+      ...vault.tasks.flatMap((task) => [
+        ...stored(task, task.planned, 'scheduled', timeZone),
+        ...stored(task, task.pins, 'pinned', timeZone),
+      ]),
+      ...vault.log.flatMap((entry): ExistingPlacement[] =>
+        entry.state === 'open' ? [] : [{ occurrenceId: entry.occurrenceId, start: entry.start, end: entry.end, state: entry.state }],
+      ),
+    ],
   };
   if (config.dayStart !== undefined) input.dayStart = config.dayStart;
   if (config.dayParts !== undefined) input.dayParts = config.dayParts;
@@ -30,11 +48,16 @@ export function scheduleInput(vault: Vault, options: InputOptions): ScheduleInpu
   return input;
 }
 
-function pins(vault: Vault, timeZone: string): Pin[] {
-  return vault.tasks.flatMap((task) =>
-    Object.entries(task.pins).map(([date, time]) => ({
-      occurrenceId: task.intention.repeat === undefined ? task.intention.id : `${task.intention.id}@${date}`,
-      start: Temporal.PlainDateTime.from(`${date}T${time.padStart(5, '0')}`).toZonedDateTime(timeZone).toInstant().toString(),
-    })),
-  );
+/** Times from a task file as stored placements, lasting the task's duration. */
+function stored(task: Task, times: string[], state: 'scheduled' | 'pinned', timeZone: string): ExistingPlacement[] {
+  let minutes: number;
+  try {
+    minutes = parseDuration(task.intention.duration);
+  } catch {
+    return []; // the engine reports the bad duration
+  }
+  return times.map((time) => {
+    const start = Temporal.Instant.from(toInstant(time, timeZone));
+    return { intentionId: task.id, start: start.toString(), end: start.add({ minutes }).toString(), state };
+  });
 }

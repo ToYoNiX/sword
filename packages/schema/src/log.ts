@@ -3,25 +3,25 @@ import { issues } from './result.ts';
 
 /**
  * One line of log/*.jsonl: something that happened to an occurrence. The
- * log is append-only; for each occurrence, the last line wins.
+ * log is append-only; for each occurrence, the last line wins. An `open`
+ * line undoes a mistaken `done`: the occurrence is as if never marked.
  */
-export interface LogEntry {
-  /** When it was recorded. */
-  at: string;
-  occurrenceId: string;
-  state: 'done' | 'missed';
-  /** The placement it happened to. */
-  start: string;
-  end: string;
-}
+export type LogEntry =
+  | {
+      /** When it was recorded. */
+      at: string;
+      occurrenceId: string;
+      state: 'done' | 'missed';
+      /** The placement it happened to. */
+      start: string;
+      end: string;
+    }
+  | { at: string; occurrenceId: string; state: 'open' };
 
-const lineSchema = z.object({
-  at: z.string(),
-  occurrence: z.string(),
-  state: z.enum(['done', 'missed']),
-  start: z.string(),
-  end: z.string(),
-});
+const lineSchema = z.discriminatedUnion('state', [
+  z.object({ at: z.string(), occurrence: z.string(), state: z.enum(['done', 'missed']), start: z.string(), end: z.string() }),
+  z.object({ at: z.string(), occurrence: z.string(), state: z.literal('open') }),
+]);
 
 export interface LogResult {
   entries: LogEntry[];
@@ -45,8 +45,8 @@ export function readLog(source: string): LogResult {
       result.errors.push({ line: i + 1, message: issues(parsed.error).join('; ') });
       return;
     }
-    const { at, occurrence, state, start, end } = parsed.data;
-    result.entries.push({ at, occurrenceId: occurrence, state, start, end });
+    const { occurrence, ...rest } = parsed.data;
+    result.entries.push(rest.state === 'open' ? { at: rest.at, occurrenceId: occurrence, state: 'open' } : { ...rest, occurrenceId: occurrence });
   });
   return result;
 }

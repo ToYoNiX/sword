@@ -42,6 +42,9 @@ priority: 2
 pins:
   - 2026-10-26 07:30
   - 2026-11-09T06:45
+planned:
+  - 2026-10-29 05:20
+  - 2026-11-02 05:21:30
 tags:
   - learning
 aliases:
@@ -74,7 +77,8 @@ describe('readIntentionFile', () => {
           tags: ['learning'],
         },
         notes: 'Working through chapter 7.\n',
-        pins: { '2026-10-26': '07:30', '2026-11-09': '06:45' },
+        pins: ['2026-10-26T07:30', '2026-11-09T06:45'],
+        planned: ['2026-10-29T05:20', '2026-11-02T05:21:30'],
       },
     });
   });
@@ -97,7 +101,7 @@ describe('readIntentionFile', () => {
   });
 
   it('accepts a file with frontmatter and no notes', () => {
-    expect(readIntentionFile('---\nduration: 30m\n---', { id: 'x' })).toMatchObject({ ok: true, value: { notes: '', pins: {} } });
+    expect(readIntentionFile('---\nduration: 30m\n---', { id: 'x' })).toMatchObject({ ok: true, value: { notes: '', pins: [], planned: [] } });
   });
 
   it('reads YAML 1.2 values as written: 09:00 and 2026-10-26 stay text', () => {
@@ -167,9 +171,15 @@ describe('other properties', () => {
     },
   );
 
-  it('reads pins written with a space or a T, or as a single value', () => {
-    const result = readIntentionFile('---\nduration: 30m\nrepeat: daily\npins: 2026-10-26T07:30\n---\n', { id: 'x' });
-    expect(result.ok && result.value.pins).toEqual({ '2026-10-26': '07:30' });
+  it('reads pins and planned times written with a space or a T, or as a single value', () => {
+    const result = readIntentionFile('---\nduration: 30m\nrepeat: daily\npins: 2026-10-26T07:30\nplanned: 2026-10-27 7:05\n---\n', { id: 'x' });
+    expect(result.ok && result.value).toMatchObject({ pins: ['2026-10-26T07:30'], planned: ['2026-10-27T07:05'] });
+  });
+
+  it('keeps seconds in planned times, and allows two times on one date', () => {
+    // A task that starts after midnight belongs to the day before when the day starts later.
+    const result = readIntentionFile('---\nduration: 30m\nrepeat: daily\nplanned:\n  - 2026-10-26 01:00\n  - 2026-10-26 23:10:05\n---\n', { id: 'x' });
+    expect(result.ok && result.value.planned).toEqual(['2026-10-26T01:00', '2026-10-26T23:10:05']);
   });
 
   it('reports every problem at once', () => {
@@ -217,8 +227,17 @@ describe('invalid properties are rejected, naming the property', () => {
     ['tags that are a number', { tags: 5 }, 'tags'],
     ['a pin with a bad date', { pins: ['tomorrow 07:30'] }, 'pins'],
     ['a pin with a bad time', { pins: ['2026-10-26 7.30'] }, 'pins'],
-    ['the same date pinned twice', { pins: ['2026-10-26 07:30', '2026-10-26 09:00'] }, 'pinned twice'],
+    ['a pin on a date that does not exist', { pins: ['2026-02-30 07:30'] }, 'pins: "2026-02-30 07:30" is not a real date and time'],
+    ['a pin at an hour that does not exist', { pins: ['2026-10-26 25:00'] }, 'pins: "2026-10-26 25:00" is not a real date and time'],
+    ['a pin with only a date', { pins: ['2026-10-26'] }, 'pins'],
+    ['a pin that is a number', { pins: [20261026] }, 'pins'],
     ['the old pins mapping', { pins: { '2026-10-26': '07:30' } }, 'pins: use a list'],
+    ['a planned time with a bad date', { planned: ['monday 05:20'] }, 'planned'],
+    ['a planned time with only a time', { planned: ['05:20'] }, 'planned'],
+    ['a planned time with a time zone', { planned: ['2026-10-26T05:20Z'] }, 'planned'],
+    ['a planned time on a date that does not exist', { planned: ['2026-13-01 05:20'] }, 'planned: "2026-13-01 05:20" is not a real date and time'],
+    ['a planned time at a minute that does not exist', { planned: ['2026-10-26 05:60'] }, 'planned'],
+    ['a planned mapping', { planned: { '2026-10-26': '05:20' } }, 'planned: use a list'],
     ['the old window mapping', { window: { after: '08:00' } }, 'after, before and within'],
   ])('%s', (_, data, expected) => {
     expect(errorsOf({ duration: '30m', ...data })).toContain(expected);
@@ -239,6 +258,8 @@ describe('unknown properties', () => {
     ['repeat_evry', 'repeat_every'],
     ['tag', 'tags'],
     ['Deadline', 'deadline'],
+    ['plannd', 'planned'],
+    ['pin', 'pins'],
   ])('get a hint when they look like a typo: %s', (typo, meant) => {
     const result = readIntention({ id: 'x', duration: '30m', [typo]: 'value' });
     expect(result).toMatchObject({ ok: true, warnings: [`unknown property "${typo}"; did you mean "${meant}"?`] });

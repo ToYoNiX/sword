@@ -1,26 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { schedule } from '@sword/engine';
 import { VaultError, findVault, loadVault, scheduleInput } from '../src/index.ts';
-
-const dirs: string[] = [];
-
-/** A temporary vault with the given files (path → content). */
-async function vault(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'sword-vault-'));
-  dirs.push(root);
-  for (const [path, content] of Object.entries(files)) {
-    await mkdir(dirname(join(root, path)), { recursive: true });
-    await writeFile(join(root, path), content);
-  }
-  return root;
-}
-
-afterEach(async () => {
-  await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
-});
+import { vault } from './helpers.ts';
 
 const config = `time_zone: Africa/Cairo
 anchors:
@@ -58,7 +40,7 @@ describe('loadVault', () => {
       ['buy-milk', 'tasks/errands/buy-milk.md'],
       ['study-go', 'tasks/study-go.md'],
     ]);
-    expect(v.tasks[1]).toMatchObject({ notes: 'Chapter 7.\n', pins: { '2026-10-26': '06:30' } });
+    expect(v.tasks[1]).toMatchObject({ notes: 'Chapter 7.\n', pins: ['2026-10-26T06:30'], planned: [] });
     expect(v.log).toEqual([expect.objectContaining({ occurrenceId: 'study-go@2026-10-25', state: 'done' })]);
   });
 
@@ -150,12 +132,18 @@ describe('loadVault', () => {
     ]);
   });
 
-  it('drops a pin on a date that does not exist, with an error', async () => {
+  it('reports a pin on a date that does not exist, like any bad property', async () => {
     const v = await loadVault(
       await vault({ 'sword.yaml': '', 'tasks/x.md': '---\nduration: 15m\nrepeat: daily\npins:\n  - 2026-02-30 07:00\n  - 2026-03-01 07:00\n---\n' }),
     );
-    expect(v.tasks[0]?.pins).toEqual({ '2026-03-01': '07:00' });
+    expect(v.tasks).toEqual([]);
     expect(v.problems).toEqual([expect.objectContaining({ file: 'tasks/x.md', level: 'error', message: expect.stringContaining('2026-02-30') })]);
+  });
+
+  it('keeps the file as read, to notice if it changes before a write', async () => {
+    const source = '---\nduration: 15m\n---\nNotes\n';
+    const v = await loadVault(await vault({ 'sword.yaml': '', 'tasks/x.md': source }));
+    expect(v.tasks[0]?.source).toBe(source);
   });
 
   it('reports bad settings', async () => {
@@ -206,7 +194,9 @@ describe('scheduleInput', () => {
     // Sunday Oct 25, 2026, 00:00 in Cairo (still summer time, UTC+3).
     const input = scheduleInput(v, { now: '2026-10-24T21:00:00Z', horizonDays: 3 });
     expect(input).toMatchObject({ timeZone: 'Africa/Cairo', horizonDays: 3, fixedAnchors: { work: { busy: true } } });
-    expect(input.pins).toEqual([{ occurrenceId: 'study-go@2026-10-26', start: '2026-10-26T03:30:00Z' }]);
+    expect(input.pins).toEqual([{ intentionId: 'study-go', start: '2026-10-26T03:30:00Z' }]);
+    // A pin is also where the occurrence was planned, so it can be missed.
+    expect(input.existing).toContainEqual({ intentionId: 'study-go', start: '2026-10-26T03:30:00Z', end: '2026-10-26T04:15:00Z', state: 'pinned' });
 
     const plan = schedule(input);
     expect(plan.errors).toEqual([]);
@@ -220,7 +210,25 @@ describe('scheduleInput', () => {
     const v = await loadVault(
       await vault({ 'sword.yaml': 'time_zone: UTC\n', 'tasks/call.md': '---\nduration: 30m\ndeadline: 2026-10-30\npins:\n  - 2026-10-27 10:00\n---\n' }),
     );
-    expect(scheduleInput(v, { now: '2026-10-25T00:00:00Z' }).pins).toEqual([{ occurrenceId: 'call', start: '2026-10-27T10:00:00Z' }]);
+    expect(scheduleInput(v, { now: '2026-10-25T00:00:00Z' }).pins).toEqual([{ intentionId: 'call', start: '2026-10-27T10:00:00Z' }]);
+  });
+
+  it('passes planned times as existing placements, and leaves out reopened log entries', async () => {
+    const v = await loadVault(
+      await vault({
+        'sword.yaml': 'time_zone: UTC\n',
+        'tasks/a.md': '---\nduration: 30m\nrepeat: daily\nplanned:\n  - 2026-10-25 08:00\n  - "2026-10-26 08:00:30"\n---\n',
+        'log/2026-10.jsonl': [
+          done('a@2026-10-25', '2026-10-25T08:00:00Z', '2026-10-25T08:30:00Z'),
+          JSON.stringify({ at: '2026-10-25T10:01:00Z', occurrence: 'a@2026-10-25', state: 'open' }),
+        ].join('\n'),
+      }),
+    );
+    expect(v.log).toEqual([expect.objectContaining({ occurrenceId: 'a@2026-10-25', state: 'open' })]);
+    expect(scheduleInput(v, { now: '2026-10-25T00:00:00Z' }).existing).toEqual([
+      { intentionId: 'a', start: '2026-10-25T08:00:00Z', end: '2026-10-25T08:30:00Z', state: 'scheduled' },
+      { intentionId: 'a', start: '2026-10-26T08:00:30Z', end: '2026-10-26T08:30:30Z', state: 'scheduled' },
+    ]);
   });
 
   it("uses the settings' horizon, then a week", async () => {

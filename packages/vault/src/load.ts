@@ -1,6 +1,5 @@
 import { access, readFile, readdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { Temporal } from 'temporal-polyfill';
 import { readConfigFile, readIntentionFile, readLog } from '@sword/schema';
 import type { Config, LogEntry } from '@sword/schema';
 import type { IntentionInput } from '@sword/engine';
@@ -13,9 +12,13 @@ export interface Task {
   /** Path relative to the vault root, with forward slashes. */
   file: string;
   intention: IntentionInput;
-  /** Occurrences moved by hand: logical date → local time. */
-  pins: Record<string, string>;
+  /** Occurrences moved by hand, as local date-times ("2026-10-26T07:30"). */
+  pins: string[];
+  /** Where occurrences were placed when a plan was last applied, in the same form. */
+  planned: string[];
   notes: string;
+  /** The file as read, to notice if it changes before Sword writes to it. */
+  source: string;
 }
 
 export interface Problem {
@@ -57,20 +60,15 @@ export async function loadVault(path: string): Promise<Vault> {
   const tasks: Task[] = [];
   for (const file of await listFiles(root, 'tasks', '.md')) {
     const id = file.slice(file.lastIndexOf('/') + 1, -'.md'.length);
-    const result = readIntentionFile(await readFile(join(root, file), 'utf8'), { id });
+    const source = await readFile(join(root, file), 'utf8');
+    const result = readIntentionFile(source, { id });
     problems.push(...result.warnings.map((message) => ({ file, level: 'warning' as const, message })));
     if (!result.ok) {
       problems.push(...result.errors.map((message) => ({ file, level: 'error' as const, message })));
       continue;
     }
-    const pins = Object.fromEntries(
-      Object.entries(result.value.pins).filter(([date]) => {
-        if (isRealDate(date)) return true;
-        problems.push({ file, level: 'error', message: `pins: ${date} is not a real date` });
-        return false;
-      }),
-    );
-    tasks.push({ id: result.value.intention.id, file, intention: result.value.intention, pins, notes: result.value.notes });
+    const { intention, pins, planned, notes } = result.value;
+    tasks.push({ id: intention.id, file, intention, pins, planned, notes, source });
   }
 
   const latest = new Map<string, LogEntry>();
@@ -112,13 +110,4 @@ async function listFiles(root: string, folder: string, extension: string): Promi
     .map((entry) => relative(root, join(entry.parentPath, entry.name)).split(sep).join('/'))
     .filter((file) => !file.split('/').some((segment) => segment.startsWith('.')))
     .sort();
-}
-
-function isRealDate(date: string): boolean {
-  try {
-    Temporal.PlainDate.from(date, { overflow: 'reject' });
-    return true;
-  } catch {
-    return false;
-  }
 }

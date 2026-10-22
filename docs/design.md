@@ -49,15 +49,17 @@ mechanism; one input is constant and the other changes daily.
 | Intention definitions (rules, duration, recurrence) | Files, source of truth | What the user means |
 | Overrides and pins ("this one occurrence at 07:00") | Files, as explicit rules | User intent, never a silent mutation |
 | Completion history (done / missed / dropped) | Files, append-only log | What actually happened |
-| Anchors (Fajr today, sunrise, work start) | Index (cache) | Inputs, computed by providers |
-| Placements (Study → 05:20–06:05 on Oct 22) | Index (derived) | Outputs, kept for stability, sync, and undo |
+| Anchors (Fajr today, sunrise, work start) | Computed on every run | Inputs, computed by providers |
+| Applied placements (Study → 05:20 on Oct 22) | Files, `planned` in each task | The plan the user accepted |
 
-Placements are stored because they must stay stable. The user needs to trust
-that their afternoon doesn't reshuffle every time they open the app. External
-calendars also need concrete events. Placements are still always *derived*:
-each one records the inputs it was computed from, so the system knows when it
-is stale. A placement can be deleted at any time and recomputed from the
-definitions.
+A plan is computed fresh on every run and nothing is stored until the user
+applies it. Applying is a decision, like a pin: "this is my schedule". So
+the applied placements are kept with the task they belong to, as its
+`planned` times (§11.3). That gives stability (the user needs to trust that
+their afternoon doesn't reshuffle every time they open the app) and missed
+detection (Sword can only know the walk was missed if it knows the walk was
+planned). Each time it plans, the scheduler checks every applied placement
+against the current rules and keeps it unless it has become invalid.
 
 ## 3. Glossary
 
@@ -377,8 +379,11 @@ A plan should change as little as possible:
   slot appeared.
 - Only placements whose inputs changed (an anchor moved, an event was added, a
   rule was edited) are reconsidered.
-- Every automatic move is recorded with its cause ("moved because Dhuhr shifted
-  from 12:01 to 12:04 and overlapped") and can be undone.
+- Every automatic move comes with its cause ("moved because Dhuhr shifted
+  from 12:01 to 12:04 and overlapped"), shown in the preview before it is
+  applied. Automatic moves are not undoable: moving Study back would put it on
+  top of Dhuhr, the exact mistake Sword exists to prevent. Changes the user
+  causes are file edits, which the editor or git can undo.
 
 ### 6.4 Packing: lessons from memory allocation
 
@@ -416,7 +421,7 @@ one-off work benefits from `packed`.
 | State | Meaning | Can the scheduler move it? |
 |---|---|---|
 | `proposed` | In a plan that hasn't been applied | n/a |
-| `scheduled` | Applied and flexible | Yes, if it becomes invalid |
+| `scheduled` | Applied (in the task's `planned` list) and flexible | Yes, if it becomes invalid |
 | `pinned` | User fixed it at this time | No. It is reported if it conflicts |
 | `blocked` | No valid slot exists | Retried on every run |
 | `done` | Completed | No. It is history |
@@ -566,6 +571,12 @@ apply(plan_id)   → Result      # applied only if the plan is still valid
 
 Agents can explore freely. Humans see a diff before accepting it.
 
+Applying writes the plan into the task files (§11.5); a preview stores
+nothing. Since the scheduler is deterministic, a plan id can simply be a hash
+of the plan: `apply` computes the plan again and refuses if it no longer
+matches. In the CLI, `sword plan` is the preview and `sword apply` applies the
+current plan.
+
 ### 9.2 MCP is built in
 
 - The MCP server is part of the Sword server process, not a separate
@@ -627,21 +638,29 @@ iCalendar/CalDAV is the **exchange format, not the database.**
 
 ## 11. Storage
 
-### 11.1 Files are the truth, the database is a cache
+### 11.1 Files are the only state
 
-Storage is split by one question: **can it be recomputed?**
+Sword keeps **no database**. Everything it needs to remember is in plain files
+in the vault: settings, tasks with their rules, pins and applied plan, and the
+log of what happened. Everything else (anchors, occurrences, the plan) is
+computed on each run, which is fast at the scale of one person's calendar. A
+server keeps the files it has read in memory and watches them for changes.
 
-- **What the user meant, and what actually happened, cannot be recomputed.**
-  It lives in plain **files**: intentions, rules, pins and overrides, settings,
-  and completion history.
-- **Everything the engine calculates can be recomputed.** It lives in an
-  embedded **SQLite index**: resolved anchors, occurrences, placements, plan and
-  undo history, and the search index.
+This has three consequences:
 
-The index can always be deleted and rebuilt from the files. The relational model
-(intentions → occurrences → placements → anchors) lives in SQL, where it can be
-queried and joined. Files refer to each other by id, and the indexer turns
-those references into foreign keys.
+- **One copy of the state.** Rename a task's note and its plan goes with it.
+  Delete the note and its plan is gone too. There is no second store to keep
+  in step with the files.
+- **Syncing the vault syncs everything.** Two devices that sync the vault
+  (Syncthing, git, Obsidian Sync) see the same plan and export the same
+  calendar. A cache that isn't synced would let them disagree.
+- **Sword edits the user's notes.** Applying a plan rewrites the `planned`
+  lines of the tasks whose plan changed, typically one line per repeating task
+  per day as the plan rolls forward. §11.5 keeps that safe.
+
+A database comes back only for data that is big, fetched, and needs queries,
+such as years of events imported from another calendar. That is the job of
+the plugin that fetches it, which may keep a cache under `.sword/`.
 
 ### 11.2 Vault layout
 
@@ -654,19 +673,18 @@ my-calendar/
 │   └── write-report.md    # subfolders are fine
 ├── log/
 │   └── 2026-10.jsonl      # done / missed, one line each, append-only
-└── .sword/                # derived, safe to delete, not synced or versioned
-    ├── index.db
-    └── plugins/
+└── .sword/                # not synced or versioned
+    └── plugins/           # installed plugin code, and plugin caches
 ```
 
 "Intention" is the internal word; on disk they are tasks. A task file without
 rules is simply in the inbox, so there is no inbox folder. Calendar feeds are
-settings in `sword.yaml`; their events are cached in the index because they can
-always be fetched again. Passwords and tokens never go in the vault, since it
+settings in `sword.yaml`; the plugin that fetches their events may cache them
+under `.sword/`, since they can always be fetched again. Passwords and tokens never go in the vault, since it
 may be synced or versioned; they go in the system keyring.
 
-Plugins may add their own folders (e.g. `sprints/`) with the same rule: user
-intent goes in files, and computed state goes in the index.
+Plugins may add their own folders (e.g. `sprints/`) with the same rule: what
+the user decides goes in files.
 
 ### 11.3 Task files
 
@@ -683,6 +701,9 @@ after: prayer.fajr
 before: work.start or 08:00
 pins:
   - 2026-10-26 07:30      # an occurrence moved by hand
+planned:
+  - 2026-10-24 05:20      # written by "apply": where Sword placed
+  - 2026-10-25 05:22      #   each occurrence
 tags:
   - learning
 ---
@@ -698,7 +719,7 @@ source mode. So every Sword property is flat and always has the same type:
 | Type | Properties |
 |---|---|
 | Text | `duration`, `at`, `after`, `before`, `within`, `prefer`, `repeat`, `title`, `id` |
-| List | `repeat_on`, `avoid`, `pins`, `tags` |
+| List | `repeat_on`, `avoid`, `pins`, `planned`, `tags` |
 | Number | `priority`, `repeat_every`, `repeat_day` |
 | Date | `date`, `repeat_since`, and `deadline` (which may also be a date and time) |
 
@@ -714,9 +735,22 @@ The frontmatter schema **is** the rule format. The same schema (as JSON Schema)
 defines the inputs of the API and the MCP tools, so a rule looks the same
 whether it is typed in Vim or Obsidian, sent over HTTP, or produced by an agent.
 
-Pins live in the task file because they are decisions about that task: each is
-the logical date of the occurrence and a local time. Pins on past dates are
-removed once their day has passed, so the list doesn't grow.
+`pins` and `planned` are lists of **real local date-times** (`2026-10-26 07:30`,
+or `2026-10-26T07:30` as Obsidian writes it). The engine works out which day's
+occurrence each belongs to: with `day_start: "04:00"`, a time of
+`2026-10-27 01:00` is the night of the 26th. Seconds are allowed and are
+written quoted, since some YAML readers would turn them into dates.
+
+- **`pins`** are the user's decisions: the occurrence goes exactly there and
+  is never moved.
+- **`planned`** is written by `apply` (§9.1): where each occurrence was placed,
+  from today on. An end time isn't stored, since it is the start plus
+  `duration`; if the duration changes, a placement that no longer fits moves.
+  Editing a time by hand works too: Sword keeps it as long as it still fits
+  the rules.
+
+Applying a plan removes pins and planned times from past days (the log keeps
+what happened), so neither list grows.
 
 ### 11.4 The log
 
@@ -728,28 +762,46 @@ What happened is appended to `log/YYYY-MM.jsonl`, one line per event:
 
 It is not kept in the task files: a daily task would collect hundreds of lines
 a year, and appending one line at a time means two devices syncing almost
-never conflict. For each occurrence, the last line wins.
+never conflict. For each occurrence, the last line wins, and it wins over the
+task's `planned` time.
+
+`done` lines are written by `sword done`. `missed` lines are written by
+`apply`, for each planned occurrence whose time passed without being done.
+
+A `done` marked by mistake is undone by appending an `open` line, which
+reopens the occurrence as if it had never been marked. Only occurrences of the
+current logical day can be undone; anything older is history.
 
 ### 11.5 Write path and consistency
 
-- Every command writes the file first, then updates the index.
-- If the process crashes between the two steps, the index is reconciled from
-  the files on the next start.
-- The vault is watched. External edits (an editor, `git pull`, a sync tool)
-  trigger re-indexing of the changed files.
+Applying a plan:
+
+1. Appends the newly missed occurrences to the log.
+2. Rewrites each task file whose `pins` or `planned` changed. Only those
+   lines change: other properties, comments, formatting and notes stay byte
+   for byte as they were. Files whose plan didn't change aren't touched, so
+   applying the same plan twice writes nothing.
+
+If it stops between the steps, nothing is lost: the log already has the missed
+lines, and the next apply finishes the files. Each file is written to a
+temporary file and renamed into place, so it is never half written.
+
+- **A file that changed while Sword was planning is skipped** and reported,
+  rather than overwriting the edit. So is one whose frontmatter Sword can't
+  safely edit (e.g. a YAML anchor on `planned`).
+- Apply refuses to run while any file has errors, so a typo never wipes a plan.
 - An invalid file (bad YAML, unknown anchor) is reported as an error on that
   intention and excluded from scheduling. It never crashes the engine or blocks
   other intentions.
-- If the index is lost, pins and history survive because they are in files.
-  Flexible placements are recomputed and may land slightly differently than
-  before.
+- A server watches the vault: external edits (an editor, `git pull`, a sync
+  tool) are re-read.
 
 ## 12. Deployment and platforms
 
 ### 12.1 Topology: one node, many clients
 
 A **node** is a running Sword instance that owns one vault. It runs the
-engine, the index, the HTTP API, the MCP endpoint, and serves the web UI. It is
+engine, the HTTP API, the MCP endpoint, and serves the web UI. It is
 the same program whether it runs on a home server, a VPS, or the user's laptop.
 
 Every other client (browser, desktop app, phone app, AI agent) talks to that
@@ -807,8 +859,8 @@ Node is the most stable, widely supported choice. Deno was ruled out after
 Cloudflare acquired it (October 2026) with official runtime development ending
 after a year.
 
-Runtime-specific APIs (`node:fs`, SQLite, sockets) are only allowed in the I/O
-packages (`vault`, `index`, `server`, `cli`) and plugin `node` entries. The
+Runtime-specific APIs (`node:fs`, sockets) are only allowed in the I/O
+packages (`vault`, `server`, `cli`) and plugin `node` entries. The
 `engine` package and plugin `engine` entries use only standard JavaScript, so
 switching or adding runtimes later touches only the I/O layer.
 
@@ -824,7 +876,6 @@ switching or adding runtimes later touches only the I/O layer.
 | iCalendar / CalDAV | `ical.js`, `tsdav` |
 | Frontmatter | `yaml` |
 | File watching | `chokidar` |
-| SQLite | `node:sqlite` if stable on our target LTS, else `better-sqlite3`, behind the `index` package |
 | HTTP server | Hono (runtime-agnostic) |
 | MCP | `@modelcontextprotocol/sdk` (stdio + streamable HTTP) |
 | Web UI | React, Vite, TanStack Query; custom day/week time grid |
@@ -838,7 +889,6 @@ packages/
   engine/      pure: time model, rules, scheduler (standard JS only)
   schema/      Zod schemas shared by everything
   vault/       files ↔ model, watcher
-  index/       SQLite
   commands/    command layer
   server/      HTTP API + MCP + serves web UI
   cli/         plan · export · sync · serve · plugin add
@@ -870,7 +920,7 @@ Everything is **MIT**: the core, `@sword/plugin-api`, the core plugins, and
 4. **The scheduler is deterministic and explainable.** AI proposes; the engine decides.
 5. **One command layer.** UI, CLI, API, plugins, and MCP share the same operations and rules.
 6. **The core is minimal.** Prayer, sprints, habits, and AI are plugins.
-7. **The schedule is stable.** Valid placements don't move without cause, and every move is explained and undoable.
+7. **The schedule is stable.** Valid placements don't move without cause, and every move is explained.
 8. **Local-first.** Everything works offline, without an LLM or a cloud account.
 9. **Interop is explicit.** Standard formats in and out, without pretending they can carry the rules.
 10. **Plain and portable data.** Definitions should be human-readable and diffable.

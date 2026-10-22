@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterEach, describe, expect, it } from 'vitest';
 import { run } from '../src/cli.ts';
+import { fakeCalDav, foreignEvent } from './fake-caldav.ts';
 
 const dirs: string[] = [];
 
@@ -31,12 +32,13 @@ afterEach(async () => {
 });
 
 /** Runs the CLI in-process at a fixed "now", capturing its output. */
-async function sword(args: string[], cwd: string, now = '2026-10-24T21:00:00Z') {
+async function sword(args: string[], cwd: string, now = '2026-10-24T21:00:00Z', env: Record<string, string> = {}) {
   let out = '';
   let err = '';
   const code = await run(args, {
     cwd: () => cwd,
     now: () => now,
+    env: (name) => env[name],
     out: (text) => (out += text),
     err: (text) => (err += text),
     color: false,
@@ -330,6 +332,119 @@ describe('sword plugin add', () => {
     const result = await sword(args, await vault({ 'sword.yaml': config }));
     expect(result.code).toBe(2);
     expect(result.err).toContain(message);
+  });
+});
+
+describe('sword sync', () => {
+  const synced = (url: string, extra = '') => `${config}caldav:\n  url: ${url}\n${extra}`;
+  const study = '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nbefore: work.start or 08:00\nprefer: latest\n---\n';
+  // Sunday Oct 25, 00:00 in Cairo.
+  const sunday = '2026-10-24T21:00:00Z';
+
+  it('creates the calendar, uploads every placement, and does nothing the second time', async () => {
+    const server = await fakeCalDav();
+    try {
+      const dir = await vault({ 'sword.yaml': synced(server.url), 'tasks/study-go.md': study, 'tasks/Read Al-Kahf.md': '---\nduration: 20m\nrepeat: daily\nafter: 07:00\n---\n' });
+      const first = await sword(['sync', '--days', '3'], dir, sunday);
+      expect(first).toMatchObject({ code: 0, err: '' });
+      expect(first.out).toBe(`Created the calendar at ${server.url}\nSynced 6 events to ${server.url}: 6 added.\n`);
+      expect(server.items.size).toBe(6);
+      expect([...server.items.values()].some((i) => i.data.includes('SUMMARY:Read Al-Kahf'))).toBe(true);
+
+      server.requests.length = 0;
+      const second = await sword(['sync', '--days', '3'], dir, sunday);
+      expect(second.out).toBe(`Already in sync: 6 events at ${server.url}\n`);
+      expect(server.requests.filter((r) => r.startsWith('PUT') || r.startsWith('DELETE'))).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('updates moved events, removes ones no longer planned, and keeps the past', async () => {
+    const server = await fakeCalDav();
+    try {
+      const dir = await vault({ 'sword.yaml': synced(server.url), 'tasks/study-go.md': study, 'tasks/walk.md': '---\nduration: 30m\nrepeat: daily\nafter: 18:00\n---\n' });
+      await sword(['sync', '--days', '3'], dir, sunday);
+      // Study now ends by 08:00 every day, and the walk is deleted.
+      await writeFile(join(dir, 'tasks/study-go.md'), study.replace('work.start or 08:00', '08:00'));
+      await rm(join(dir, 'tasks/walk.md'));
+      // Monday 12:00 in Cairo: Sunday is history.
+      const result = await sword(['sync', '--days', '2'], dir, '2026-10-26T09:00:00Z');
+      // Tuesday's study moved; the walk's Monday and Tuesday events go; Sunday's
+      // events and this morning's study are over, so they stay as history.
+      expect(result.out).toBe(`Synced 4 events to ${server.url}: 1 updated, 2 removed, 3 past events kept.\n`);
+      const summaries = [...server.items.values()].map((i) => /SUMMARY:(.*)/.exec(i.data)?.[1]);
+      expect(summaries.filter((s) => s === 'walk')).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('never touches events Sword did not make', async () => {
+    const server = await fakeCalDav();
+    try {
+      server.exists = true;
+      server.items.set('dentist.ics', { data: foreignEvent, etag: '"d"' });
+      const dir = await vault({ 'sword.yaml': synced(server.url), 'tasks/study-go.md': study });
+      await sword(['sync', '--days', '1'], dir, sunday);
+      expect(server.items.get('dentist.ics')).toEqual({ data: foreignEvent, etag: '"d"' });
+      expect(server.requests.filter((r) => r.includes('dentist'))).toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('logs in with the username from sword.yaml and the password from SWORD_CALDAV_PASSWORD', async () => {
+    const server = await fakeCalDav({ user: 'assem', password: 'secret' });
+    try {
+      const dir = await vault({ 'sword.yaml': synced(server.url, '  username: assem\n'), 'tasks/study-go.md': study });
+      const denied = await sword(['sync', '--days', '1'], dir, sunday);
+      expect(denied.code).toBe(1);
+      expect(denied.err).toBe(`sword: ${server.url} refused the login (401); check caldav.username in sword.yaml and SWORD_CALDAV_PASSWORD\n`);
+      const allowed = await sword(['sync', '--days', '1'], dir, sunday, { SWORD_CALDAV_PASSWORD: 'secret' });
+      expect(allowed).toMatchObject({ code: 0, err: '' });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('explains a server it cannot reach', async () => {
+    const dir = await vault({ 'sword.yaml': synced('http://127.0.0.1:9/assem/sword/'), 'tasks/study-go.md': study });
+    const result = await sword(['sync', '--days', '1'], dir, sunday);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('could not reach http://127.0.0.1:9/assem/sword/');
+  });
+
+  it('explains how to set it up when sword.yaml has no caldav section', async () => {
+    const result = await sword(['sync'], await vault({ 'sword.yaml': config }), sunday);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('add a caldav section to sword.yaml');
+  });
+
+  it('stops, without overwriting, if an event changes on the server during the sync', async () => {
+    const server = await fakeCalDav();
+    try {
+      const dir = await vault({ 'sword.yaml': synced(server.url), 'tasks/study-go.md': study });
+      await sword(['sync', '--days', '1'], dir, sunday);
+      await writeFile(join(dir, 'tasks/study-go.md'), study.replace('45m', '30m'));
+      const [name, item] = [...server.items][0]!;
+      // Someone edits it after Sword read the calendar: the ETag Sword holds is stale.
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        if (init?.method === 'PUT') server.items.set(name, { data: item.data, etag: '"edited"' });
+        return realFetch(input, init);
+      }) as typeof fetch;
+      try {
+        const result = await sword(['sync', '--days', '1'], dir, sunday);
+        expect(result.code).toBe(1);
+        expect(result.err).toContain('changed on the server during the sync');
+        expect(server.items.get(name)?.etag).toBe('"edited"');
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    } finally {
+      await server.close();
+    }
   });
 });
 

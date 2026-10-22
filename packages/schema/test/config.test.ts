@@ -63,6 +63,13 @@ describe('readConfig', () => {
     });
   });
 
+  it('reads where to sync the calendar to', () => {
+    expect(readConfig({ caldav: { url: 'http://localhost:5232/assem/sword/', username: 'assem' } })).toMatchObject({
+      ok: true,
+      value: { caldav: { url: 'http://localhost:5232/assem/sword/', username: 'assem' } },
+    });
+  });
+
   it('keeps other settings as they are, for plugins: only the vault knows which are installed', () => {
     const result = readConfig({ time_zone: 'Africa/Cairo', prayer: { method: 'egyptian' }, day_strat: '05:00' });
     expect(result).toEqual({
@@ -86,6 +93,9 @@ describe('readConfig', () => {
     ['a location written as text', { location: 'Cairo' }, 'location'],
     ['a location with an extra field', { location: { latitude: 30, longitude: 31, city: 'Cairo' } }, 'city'],
     ['plugins that are not a list', { plugins: 'https://github.com/ToYoNiX/sword-prayer' }, 'plugins'],
+    ['a caldav url that is not http', { caldav: { url: 'ftp://example.com/cal/' } }, 'caldav.url'],
+    ['a caldav section without a url', { caldav: { username: 'assem' } }, 'caldav.url'],
+    ['a password in sword.yaml', { caldav: { url: 'http://localhost:5232/a/b/', password: 'secret' } }, 'password'],
   ])('rejects %s and names the field', (_, data, field) => {
     const result = readConfig(data);
     expect(result.ok).toBe(false);

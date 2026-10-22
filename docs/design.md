@@ -719,6 +719,13 @@ iCalendar/CalDAV is the **exchange format, not the database.**
   properties, so Sword never imports its own output again.
 - **Rules are never exported as RRULEs** with fixed times, because that is
   exactly what loses the behavior.
+- **For now, publishing is built in:** `sword export` writes an `.ics` file,
+  and `sword sync` publishes to a CalDAV calendar (`caldav:` in `sword.yaml`,
+  the password from `SWORD_CALDAV_PASSWORD`). Each occurrence is one event
+  in a file named after it. A sync compares events by content (servers
+  reorder properties), never touches events Sword didn't make, and keeps
+  events that are over as history. It keeps no state: the calendar's own
+  listing says what is there. This moves into the calendar plugin later.
 - **External edits to exported events** (open question, §17) are either
   ignored and overwritten, or interpreted as a pin override.
 

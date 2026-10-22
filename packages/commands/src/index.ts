@@ -7,6 +7,7 @@ import { plan } from './commands/plan.ts';
 import { createTask, deleteTask, updateTask } from './commands/tasks.ts';
 
 export { CommandError, allows, defineCommand, invoke } from './command.ts';
+export { toIcs } from './ics.ts';
 export type { Command, CommandErrorCode, Context, InputOf, ResultOf, Scope, VaultAccess } from './command.ts';
 export type { PlanResult } from './planning.ts';
 export { apply, check, createTask, deleteTask, done, exportIcs, plan, undoDone, updateTask };

@@ -25,6 +25,7 @@ process.exitCode = await run(process.argv.slice(2), {
   cwd: currentFolder,
   // Whole seconds: these times end up in the log, where milliseconds are noise.
   now: () => new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+  env: (name) => process.env[name],
   out: (text) => process.stdout.write(text),
   err: (text) => process.stderr.write(text),
   color: process.stdout.isTTY === true && process.env['NO_COLOR'] === undefined,

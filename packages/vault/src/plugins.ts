@@ -30,7 +30,7 @@ export class PluginError extends Error {
 }
 
 /** Settings of the core; a plugin can't use these as its id. */
-const CORE = new Set(['time_zone', 'day_start', 'horizon_days', 'avoid', 'day_parts', 'anchors', 'location', 'plugins', 'day']);
+const CORE = new Set(['time_zone', 'day_start', 'horizon_days', 'avoid', 'day_parts', 'anchors', 'location', 'plugins', 'caldav', 'day']);
 const ID = /^[a-z][a-z0-9_]*$/;
 
 /** The folder a plugin from `source` (a URL or a path) is installed in. */

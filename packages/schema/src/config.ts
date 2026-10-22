@@ -31,6 +31,12 @@ const configSchema = z.object({
     })
     .optional(),
   plugins: z.array(text).optional(),
+  caldav: z
+    .strictObject({
+      url: z.string().regex(/^https?:\/\/\S+$/, 'must be an http or https URL'),
+      username: text.optional(),
+    })
+    .optional(),
 });
 
 const SETTINGS = new Set(Object.keys(configSchema.shape));
@@ -45,6 +51,11 @@ export interface Config {
   /** The `anchors` section: anchors at fixed times, e.g. work hours. */
   fixedAnchors?: Record<string, FixedAnchorInput>;
   location?: { latitude: number; longitude: number };
+  /**
+   * A CalDAV calendar to publish the plan to (`sword sync`). The password is
+   * never stored in the vault: it comes from SWORD_CALDAV_PASSWORD.
+   */
+  caldav?: { url: string; username?: string };
   /** Plugins the vault uses: where each was installed from. */
   plugins: string[];
   /**
@@ -73,6 +84,7 @@ export function readConfig(data: unknown): Result<Config> {
   const raw = parsed.data;
   const config: Config = { plugins: raw.plugins ?? [], other };
   if (raw.location !== undefined) config.location = raw.location;
+  if (raw.caldav !== undefined) config.caldav = raw.caldav.username === undefined ? { url: raw.caldav.url } : { url: raw.caldav.url, username: raw.caldav.username };
   if (raw.time_zone !== undefined) config.timeZone = raw.time_zone;
   if (raw.day_start !== undefined) config.dayStart = raw.day_start;
   if (raw.horizon_days !== undefined) config.horizonDays = raw.horizon_days;

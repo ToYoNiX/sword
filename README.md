@@ -67,6 +67,7 @@ alias sword="node ~/path/to/sword/packages/cli/src/main.ts"
 | `sword done TASK [--date D]` | Mark today's (or another day's) occurrence done |
 | `sword done --undo TASK` | Undo a mistaken done, for today's occurrences |
 | `sword export [--days N] [--out FILE]` | Write the schedule as iCalendar, e.g. to publish to Radicale |
+| `sword sync [--days N]` | Publish the schedule to a CalDAV calendar, e.g. Radicale (see below) |
 | `sword mcp` | Serve the vault to an agent app over MCP (see below) |
 | `sword plugin add REPO` | Install a plugin from a git URL or a local path |
 
@@ -74,6 +75,25 @@ Commands find the vault the current folder is in, like git, or take `--dir`.
 Tasks are Markdown files in `tasks/`; see the
 [design document](docs/design.md#113-task-files) for the format. Sword keeps
 no database: everything, including the applied plan, is in your files.
+
+### Seeing it in a calendar app
+
+`sword sync` publishes the plan to a CalDAV calendar, such as a
+[Radicale](https://radicale.org) server, so any calendar app can show it
+(Thunderbird, GNOME Calendar, DAVx⁵ on Android, …):
+
+```yaml
+# sword.yaml
+caldav:
+  url: http://localhost:5232/you/sword/
+  username: you
+```
+
+The password goes in `SWORD_CALDAV_PASSWORD`, never in the vault. Each run
+creates the calendar if needed, adds and updates events, and removes ones no
+longer planned. It only touches events Sword made, and events that are over
+stay as history. Run it again after `sword apply`, or whenever the plan
+changes.
 
 ### Plugins
 

@@ -6,6 +6,7 @@ import { exportIcs } from './commands/export.ts';
 import { init } from './commands/init.ts';
 import { mcp } from './commands/mcp.ts';
 import { plugin } from './commands/plugin.ts';
+import { sync } from './commands/sync.ts';
 import { plan } from './commands/plan.ts';
 import { CommandError } from '@sword/commands';
 import { CliError } from './io.ts';
@@ -21,6 +22,7 @@ Commands:
   sword done <task>       mark today's occurrence of a task done
   sword done --undo <task>  undo that, for today's occurrences
   sword export            write the schedule as iCalendar (.ics)
+  sword sync              publish the schedule to a CalDAV calendar (e.g. Radicale)
   sword mcp               serve the vault to an agent app over MCP (stdio)
   sword plugin add <repo> install a plugin from a git URL or a local path
 
@@ -72,6 +74,10 @@ export async function run(args: string[], io: Io): Promise<number> {
       case 'mcp': {
         const { values } = parsed(() => parseArgs({ args: rest, options: { dir: { type: 'string' } } }));
         return await mcp(io, values.dir);
+      }
+      case 'sync': {
+        const { values } = parsed(() => parseArgs({ args: rest, options: { dir: { type: 'string' }, days: { type: 'string' } } }));
+        return await sync(io, { dir: values.dir, days: days(values.days) });
       }
       case 'export': {
         const { values } = parsed(() =>

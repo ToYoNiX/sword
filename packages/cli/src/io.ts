@@ -5,6 +5,8 @@ export interface Io {
   /** The current folder; only asked for when a command needs it, since it may no longer exist. */
   cwd: () => string;
   now: () => string;
+  /** An environment variable, e.g. SWORD_CALDAV_PASSWORD. */
+  env: (name: string) => string | undefined;
   out: (text: string) => void;
   err: (text: string) => void;
   color: boolean;

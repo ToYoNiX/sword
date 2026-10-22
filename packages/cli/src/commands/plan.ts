@@ -1,12 +1,12 @@
 import { Temporal } from 'temporal-polyfill';
-import { EngineInputError, schedule } from '@sword/engine';
-import type { Placement, Plan } from '@sword/engine';
-import { formatDate, scheduleInput } from '@sword/vault';
-import type { Vault } from '@sword/vault';
-import { describeChanges, hasChanges } from '../changes.ts';
-import { CliError, paint } from '../io.ts';
+import { invoke, plan as planVault } from '@sword/commands';
+import type { PlanResult } from '@sword/commands';
+import type { Placement } from '@sword/engine';
+import { formatDate } from '@sword/vault';
+import { describeChanges } from '../changes.ts';
+import { paint } from '../io.ts';
 import type { Io } from '../io.ts';
-import { openVault } from '../vault.ts';
+import { context } from '../vault.ts';
 
 export interface PlanOptions {
   dir: string | undefined;
@@ -15,40 +15,16 @@ export interface PlanOptions {
 }
 
 export async function plan(io: Io, options: PlanOptions): Promise<number> {
-  const vault = await openVault(io, options.dir);
-  const result = computePlan(io, vault, options.days);
-  if (options.json) {
-    io.out(`${JSON.stringify(result.plan, null, 2)}\n`);
-  } else {
-    io.out(formatPlan(io, vault, result.plan, result.timeZone));
-  }
+  const result = await invoke(planVault, await context(io, options.dir), { days: options.days });
+  io.out(options.json ? `${JSON.stringify(result.plan, null, 2)}\n` : formatPlan(io, result));
   return 0;
 }
 
-/** Plans the vault, or explains why it can't. */
-export function computePlan(io: Io, vault: Vault, days: number | undefined): { plan: Plan; timeZone: string } {
-  const fileErrors = vault.problems.filter((p) => p.level === 'error').length;
-  if (fileErrors > 0) throw new CliError(`${fileErrors} ${fileErrors === 1 ? 'problem' : 'problems'} in your files; run "sword check" to see them.`);
-  const input = scheduleInput(vault, { now: io.now(), ...(days !== undefined && { horizonDays: days }) });
-  let plan: Plan;
-  try {
-    plan = schedule(input);
-  } catch (error) {
-    if (error instanceof EngineInputError) throw new CliError(`sword.yaml: ${error.message}`);
-    throw error;
-  }
-  if (plan.errors.length > 0) {
-    throw new CliError(`${plan.errors.length} ${plan.errors.length === 1 ? 'task has' : 'tasks have'} errors; run "sword check" to see them.`);
-  }
-  return { plan, timeZone: input.timeZone };
-}
-
-function formatPlan(io: Io, vault: Vault, plan: Plan, timeZone: string): string {
-  const titles = new Map(vault.tasks.map((t) => [t.intention.id, t.intention.title ?? t.intention.id]));
-  const title = (id: string) => titles.get(id) ?? id;
+function formatPlan(io: Io, { plan, titles, timeZone, now }: PlanResult): string {
+  const title = (id: string) => titles[id] ?? id;
   const clock = (iso: string) => Temporal.Instant.from(iso).toZonedDateTimeISO(timeZone).toPlainTime().toString({ smallestUnit: 'minute' });
   const conflicted = new Set(plan.conflicts.map((c) => c.occurrenceId));
-  const lines: string[] = [paint(io, 'dim', `${timeZone} · now ${formatDate(Temporal.Instant.from(io.now()).toZonedDateTimeISO(timeZone).toPlainDate().toString())} ${clock(io.now())}`), ''];
+  const lines: string[] = [paint(io, 'dim', `${timeZone} · now ${formatDate(Temporal.Instant.from(now).toZonedDateTimeISO(timeZone).toPlainDate().toString())} ${clock(now)}`), ''];
 
   const line = (p: Placement) => {
     const marks = [p.state !== 'scheduled' && p.state, conflicted.has(p.occurrenceId) && 'conflict'].filter(Boolean) as string[];
@@ -66,10 +42,11 @@ function formatPlan(io: Io, vault: Vault, plan: Plan, timeZone: string): string 
   const section = (name: string, style: 'yellow' | 'red' | 'bold', items: string[]) => {
     if (items.length > 0) lines.push(paint(io, style, name), ...items.map((i) => `  ${i}`), '');
   };
-  if (hasChanges(plan)) {
+  const { added, moved, removed, missed } = plan.diff;
+  if (added.length + moved.length + removed.length + missed.length > 0) {
     lines.push(
       paint(io, 'yellow', 'Changes, not applied yet'),
-      ...describeChanges(vault, plan, timeZone).map((c) => `  ${c}`),
+      ...describeChanges(plan, titles, timeZone).map((c) => `  ${c}`),
       paint(io, 'dim', 'Run "sword apply" to save them in your task files.'),
       '',
     );

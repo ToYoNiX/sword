@@ -5,6 +5,7 @@ import { done } from './commands/done.ts';
 import { exportIcs } from './commands/export.ts';
 import { init } from './commands/init.ts';
 import { plan } from './commands/plan.ts';
+import { CommandError } from '@sword/commands';
 import { CliError } from './io.ts';
 import type { Io } from './io.ts';
 
@@ -70,9 +71,10 @@ export async function run(args: string[], io: Io): Promise<number> {
         throw new CliError(`unknown command "${command}"\n\n${USAGE}`, 2);
     }
   } catch (error) {
-    if (!(error instanceof CliError)) throw error;
-    io.err(`sword: ${error.message}\n`);
-    return error.code;
+    const failure = error instanceof CommandError ? fromCommand(error) : error;
+    if (!(failure instanceof CliError)) throw error;
+    io.err(`sword: ${failure.message}\n`);
+    return failure.code;
   }
 }
 
@@ -90,4 +92,10 @@ function days(value: string | undefined): number | undefined {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1 || n > 366) throw new CliError(`--days must be a whole number from 1 to 366, not "${value}"`, 2);
   return n;
+}
+
+/** A command's failure, as the CLI reports it. */
+function fromCommand(error: CommandError): CliError {
+  if (error.code === 'vault_errors') return new CliError(`${error.message}; run "sword check" to see them.`);
+  return new CliError(error.message);
 }

@@ -1,22 +1,18 @@
-import { applyPlan } from '@sword/vault';
+import { apply as applyPlan, invoke } from '@sword/commands';
 import { describeChanges } from '../changes.ts';
 import { CliError } from '../io.ts';
 import type { Io } from '../io.ts';
-import { openVault } from '../vault.ts';
-import { computePlan } from './plan.ts';
+import { context } from '../vault.ts';
 
 export interface ApplyOptions {
   dir: string | undefined;
   days: number | undefined;
 }
 
-/** Saves the plan in the task files, and logs what was missed. */
 export async function apply(io: Io, options: ApplyOptions): Promise<number> {
-  const vault = await openVault(io, options.dir);
-  const { plan, timeZone } = computePlan(io, vault, options.days);
-  const applied = await applyPlan(vault, plan, { now: io.now() });
-
-  const changes = describeChanges(vault, plan, timeZone);
+  const result = await invoke(applyPlan, await context(io, options.dir), { days: options.days });
+  const { applied } = result;
+  const changes = describeChanges(result.plan, result.titles, result.timeZone);
   const updated = applied.files.length;
   if (changes.length === 0 && updated === 0 && applied.skipped.length === 0) {
     io.out('Nothing to apply: your task files already hold this plan.\n');

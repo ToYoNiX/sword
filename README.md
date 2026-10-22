@@ -75,8 +75,8 @@ no database: everything, including the applied plan, is in your files.
 
 ## Status
 
-Early development. Working: the scheduling engine, reading vaults, and the
-CLI. Not yet: plugins (prayer times come from
+Early development. Working: the scheduling engine, reading and writing vaults,
+the command layer, and the CLI. Not yet: plugins (prayer times come from
 [sword-playground](https://github.com/ToYoNiX/sword-playground) for now),
 calendar import, the server, MCP and the UI.
 

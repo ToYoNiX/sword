@@ -1,9 +1,7 @@
-import { appendLog, formatDate, markDone, reopen } from '@sword/vault';
-import type { Vault } from '@sword/vault';
-import { CliError } from '../io.ts';
+import { done as markDone, invoke, undoDone } from '@sword/commands';
+import { formatDate } from '@sword/vault';
 import type { Io } from '../io.ts';
-import { openVault } from '../vault.ts';
-import { computePlan } from './plan.ts';
+import { context } from '../vault.ts';
 
 export interface DoneOptions {
   dir: string | undefined;
@@ -12,26 +10,9 @@ export interface DoneOptions {
   undo: boolean;
 }
 
-/** Marks today's (or another day's) occurrence of a task done, or undoes that today. */
 export async function done(io: Io, options: DoneOptions): Promise<number> {
-  const vault = await openVault(io, options.dir);
-  const { plan } = computePlan(io, vault, undefined);
-  const request = { task: options.task, now: io.now(), ...(options.date !== undefined && { date: options.date }) };
-  let entry;
-  try {
-    entry = options.undo ? reopen(vault, plan, request) : markDone(vault, plan, request);
-  } catch (error) {
-    throw new CliError((error as Error).message);
-  }
-  await appendLog(vault, [entry]);
-  io.out(`${describe(vault, entry.occurrenceId)} ${options.undo ? 'is not done anymore' : 'is done'}.\n`);
+  const result = await invoke(options.undo ? undoDone : markDone, await context(io, options.dir), { task: options.task, date: options.date });
+  const which = result.date === null ? result.title : `${result.title} (${formatDate(result.date)})`;
+  io.out(`${which} ${result.state === 'done' ? 'is done' : 'is not done anymore'}.\n`);
   return 0;
-}
-
-/** "Study Go (Sun 25 Oct)", or just the title for a one-off task. */
-function describe(vault: Vault, occurrenceId: string): string {
-  const at = occurrenceId.lastIndexOf('@');
-  const task = vault.tasks.find((t) => t.id === occurrenceId) ?? vault.tasks.find((t) => t.id === occurrenceId.slice(0, at));
-  const title = task?.intention.title ?? task?.id ?? occurrenceId;
-  return task?.id === occurrenceId ? title : `${title} (${formatDate(occurrenceId.slice(at + 1))})`;
 }

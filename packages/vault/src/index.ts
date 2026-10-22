@@ -1,4 +1,5 @@
 export { CONFIG_FILE, findVault, loadVault } from './load.ts';
+export { fileVault } from './access.ts';
 export type { Problem, Task, Vault } from './load.ts';
 export { scheduleInput, timeZoneOf } from './input.ts';
 export type { InputOptions } from './input.ts';

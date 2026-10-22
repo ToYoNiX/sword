@@ -50,7 +50,7 @@ export async function loadVault(path: string): Promise<Vault> {
   try {
     configSource = await readFile(join(root, CONFIG_FILE), 'utf8');
   } catch {
-    throw new VaultError(`${root} is not a Sword vault: it has no ${CONFIG_FILE} (run "sword init" to create one)`);
+    throw new VaultError(`${root} is not a Sword vault: it has no ${CONFIG_FILE}`, 'not_found');
   }
   const configResult = readConfigFile(configSource);
   problems.push(...configResult.warnings.map((message) => ({ file: CONFIG_FILE, level: 'warning' as const, message })));

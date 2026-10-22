@@ -191,17 +191,17 @@ describe('markDone and reopen', () => {
     expect(markDone(v, plan, { task: 'study', now: at('2026-10-25', '08:00') })).toMatchObject({ start: at('2026-10-25', '07:15'), end: at('2026-10-25', '08:00') });
   });
 
-  it.each<[string, { task: string; date?: string }, string]>([
-    ['an unknown task', { task: 'nope' }, 'no task named "nope"'],
-    ['a day the task does not occur on', { task: 'gym' }, 'gym has no occurrence on Sun 25 Oct'],
-    ['a date on a one-off task', { task: 'call', date: '2026-10-25' }, 'call is a one-off task; leave out the date'],
-    ['a date that is not a date', { task: 'study', date: 'tomorrow' }, '"tomorrow" is not a date; use one like 2026-10-25'],
-    ['a past day with nothing planned', { task: 'study', date: '2026-10-20' }, 'study was not planned on Tue 20 Oct'],
-  ])('refuses %s', async (_, request, message) => {
+  it.each<[string, { task: string; date?: string }, string, VaultError['code']]>([
+    ['an unknown task', { task: 'nope' }, 'no task named "nope"', 'not_found'],
+    ['a day the task does not occur on', { task: 'gym' }, 'gym has no occurrence on Sun 25 Oct', 'not_found'],
+    ['a date on a one-off task', { task: 'call', date: '2026-10-25' }, 'call is a one-off task; leave out the date', 'invalid_input'],
+    ['a date that is not a date', { task: 'study', date: 'tomorrow' }, '"tomorrow" is not a date; use one like 2026-10-25', 'invalid_input'],
+    ['a past day with nothing planned', { task: 'study', date: '2026-10-20' }, 'study was not planned on Tue 20 Oct', 'not_found'],
+  ])('refuses %s', async (_, request, message, code) => {
     const root = await applied();
     await writeFile(join(root, 'tasks/call.md'), '---\nduration: 30m\nafter: 09:00\n---\n');
     const { v, plan } = await planAt(root, at('2026-10-25', '06:00'));
-    expect(() => markDone(v, plan, { ...request, now: at('2026-10-25', '06:00') })).toThrow(new VaultError(message));
+    expect(() => markDone(v, plan, { ...request, now: at('2026-10-25', '06:00') })).toThrow(new VaultError(message, code));
   });
 
   it('finds a task by its title too, unless the title is ambiguous', async () => {
@@ -212,7 +212,7 @@ describe('markDone and reopen', () => {
     const { v, plan } = await planAt(root, at('2026-10-25', '06:00'));
     expect(markDone(v, plan, { task: 'Study Go', now: at('2026-10-25', '06:00') }).occurrenceId).toBe('study@2026-10-25');
     expect(() => markDone(v, plan, { task: 'Gym', now: at('2026-10-25', '06:00') })).toThrow(
-      new VaultError('"Gym" is the title of 2 tasks; use the note name: gym, gym-2'),
+      new VaultError('"Gym" is the title of 2 tasks; use the note name: gym, gym-2', 'invalid_input'),
     );
   });
 

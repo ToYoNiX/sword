@@ -108,18 +108,27 @@ export interface IntentionInput {
 export type PlacementState = 'scheduled' | 'pinned' | 'done' | 'missed';
 export type PlacementKind = 'fitted' | 'formula' | 'pinned';
 
-/** A placement from a previous plan, as stored by the caller. */
-export interface ExistingPlacement {
-  occurrenceId: string;
+/**
+ * Which occurrence something belongs to: its id, or its task, in which case
+ * it is the task's occurrence on the logical day `start` falls in (a one-off
+ * task has only one). Task files store times this way.
+ */
+export type OccurrenceRef = { occurrenceId: string; intentionId?: never } | { intentionId: string; occurrenceId?: never };
+
+/**
+ * A placement from a previous plan, as stored by the caller. When two
+ * describe the same occurrence, what happened (done, missed) wins over a pin,
+ * and a pin over a plain scheduled time.
+ */
+export type ExistingPlacement = OccurrenceRef & {
   start: string;
   end: string;
   state: PlacementState;
-}
+};
 
-export interface Pin {
-  occurrenceId: string;
+export type Pin = OccurrenceRef & {
   start: string;
-}
+};
 
 export interface ScheduleInput {
   /** IANA time zone, e.g. "Asia/Riyadh". */

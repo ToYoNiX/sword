@@ -35,6 +35,8 @@ import type {
   ExistingPlacement,
   Issue,
   Move,
+  OccurrenceRef,
+  Pin,
   Placement,
   PlacementKind,
   PlacementState,
@@ -48,6 +50,8 @@ import type {
 const MINUTE = 60_000;
 const MAX_HORIZON_DAYS = 366;
 const STATES = new Set<unknown>(['scheduled', 'pinned', 'done', 'missed']);
+/** Which record of an occurrence wins: what happened, then a pin, then a plain scheduled time. */
+const RANK: Record<PlacementState, number> = { done: 2, missed: 2, pinned: 1, scheduled: 0 };
 
 export function schedule(input: ScheduleInput): Plan {
   return new Planner(input).run();
@@ -528,45 +532,59 @@ class Planner {
     for (const raw of inputs) {
       let entry: Stored;
       try {
-        if (typeof raw.occurrenceId !== 'string' || raw.occurrenceId === '') throw new ParseError('it has no occurrenceId');
         if (!STATES.has(raw.state)) throw new ParseError(`unknown state ${JSON.stringify(raw.state)}`);
-        entry = { occurrenceId: raw.occurrenceId, start: parseInstant(raw.start), end: parseInstant(raw.end), state: raw.state };
+        const start = parseInstant(raw.start);
+        entry = { occurrenceId: this.occurrenceOf(raw, start), start, end: parseInstant(raw.end), state: raw.state };
         if (entry.end <= entry.start) throw new ParseError('it ends before it starts');
       } catch (error) {
         if (!(error instanceof ParseError)) throw error;
-        this.warnings.push({ code: 'invalid_existing', message: `ignored existing placement: ${error.message}`, occurrenceId: String(raw?.occurrenceId) });
+        this.warnings.push({ code: 'invalid_existing', message: `ignored existing placement: ${error.message}`, occurrenceId: refOf(raw) });
         continue;
       }
       const previous = stored.get(entry.occurrenceId);
       if (previous) {
-        this.warnings.push({ code: 'duplicate_existing', message: 'more than one existing placement; keeping the earliest', occurrenceId: entry.occurrenceId });
-        if (previous.start <= entry.start) continue;
+        const rank = RANK[entry.state] - RANK[previous.state];
+        if (rank < 0) continue;
+        if (rank === 0) {
+          this.warnings.push({ code: 'duplicate_existing', message: 'more than one existing placement; keeping the earliest', occurrenceId: entry.occurrenceId });
+          if (previous.start <= entry.start) continue;
+        }
       }
       stored.set(entry.occurrenceId, entry);
     }
     return stored;
   }
 
-  private readPins(inputs: readonly { occurrenceId: string; start: string }[]): Map<string, number> {
+  private readPins(inputs: readonly Pin[]): Map<string, number> {
     const pins = new Map<string, number>();
     for (const raw of inputs) {
       let start: number;
+      let occurrenceId: string;
       try {
-        if (typeof raw.occurrenceId !== 'string' || raw.occurrenceId === '') throw new ParseError('it has no occurrenceId');
         start = parseInstant(raw.start);
+        occurrenceId = this.occurrenceOf(raw, start);
       } catch (error) {
         if (!(error instanceof ParseError)) throw error;
-        this.warnings.push({ code: 'invalid_pin', message: `ignored pin: ${error.message}`, occurrenceId: String(raw?.occurrenceId) });
+        this.warnings.push({ code: 'invalid_pin', message: `ignored pin: ${error.message}`, occurrenceId: refOf(raw) });
         continue;
       }
-      const previous = pins.get(raw.occurrenceId);
+      const previous = pins.get(occurrenceId);
       if (previous !== undefined) {
-        this.warnings.push({ code: 'duplicate_pin', message: 'pinned more than once; keeping the earliest', occurrenceId: raw.occurrenceId });
+        this.warnings.push({ code: 'duplicate_pin', message: 'pinned more than once; keeping the earliest', occurrenceId });
         if (previous <= start) continue;
       }
-      pins.set(raw.occurrenceId, start);
+      pins.set(occurrenceId, start);
     }
     return pins;
+  }
+
+  /** The occurrence a pin or stored placement refers to, by id or by task and time. */
+  private occurrenceOf(raw: OccurrenceRef, start: number): string {
+    const { occurrenceId, intentionId } = raw as { occurrenceId?: unknown; intentionId?: unknown };
+    if (occurrenceId !== undefined && intentionId !== undefined) throw new ParseError('give an occurrenceId or an intentionId, not both');
+    if (typeof occurrenceId === 'string' && occurrenceId !== '') return occurrenceId;
+    if (typeof intentionId !== 'string' || intentionId === '') throw new ParseError('it has no occurrenceId or intentionId');
+    return this.intentions.get(intentionId)?.recurrence ? `${intentionId}@${this.days.dateOf(start)}` : intentionId;
   }
 
   private warnAboutUnknownPins(known: ReadonlySet<string>): void {
@@ -686,6 +704,11 @@ function matches(selector: Selector, item: Item): boolean {
 
 function refs(items: readonly Item[]): string[] {
   return [...new Set(items.map((item) => item.ref))].sort(compareText);
+}
+
+function refOf(raw: unknown): string {
+  const { occurrenceId, intentionId } = (raw ?? {}) as { occurrenceId?: unknown; intentionId?: unknown };
+  return String(occurrenceId ?? intentionId);
 }
 
 function intentionIdOf(occurrenceId: string): string {

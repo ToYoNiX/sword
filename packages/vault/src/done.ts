@@ -66,7 +66,7 @@ function nameOf(task: Task): string {
 }
 
 /** A task by its id (the note name), or else by its title. */
-function findTask(vault: Vault, name: string): Task {
+export function findTask(vault: Vault, name: string): Task {
   const byId = vault.tasks.find((t) => t.id === name);
   if (byId) return byId;
   const byTitle = vault.tasks.filter((t) => t.intention.title === name);

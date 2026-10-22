@@ -34,7 +34,7 @@ describe('the command list', () => {
       expect(command.description.length).toBeGreaterThan(20);
       expect(['read', 'propose', 'write', 'pin', 'admin']).toContain(command.scope);
     }
-    expect(names).toEqual(['check', 'plan', 'apply', 'done', 'undo_done', 'export']);
+    expect(names).toEqual(['check', 'plan', 'apply', 'done', 'undo_done', 'create_task', 'update_task', 'delete_task', 'export']);
   });
 
   it('describes every input as a JSON Schema object, as MCP tools need', () => {
@@ -188,6 +188,9 @@ describe('done and undo_done', () => {
       load: async () => memory,
       applyPlan: async () => ({ files: [], skipped: [], logged: [] }),
       appendLog: async (_, entries) => void logged.push(...entries),
+      createTask: () => Promise.reject(new Error('not used')),
+      updateTask: () => Promise.reject(new Error('not used')),
+      trashTask: () => Promise.reject(new Error('not used')),
     };
     const result = await invoke(done, { vault: access, now: () => '2026-10-25T18:00:00Z' }, { task: 'walk' });
     expect(result.occurrenceId).toBe('walk@2026-10-25');

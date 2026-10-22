@@ -33,7 +33,7 @@ describe('the MCP server', () => {
   it('offers every command as a tool, described from its definition', async () => {
     const client = await connect(await vault({ 'sword.yaml': settings }));
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(['check', 'plan', 'apply', 'done', 'undo_done', 'export']);
+    expect(tools.map((t) => t.name)).toEqual(['check', 'plan', 'apply', 'done', 'undo_done', 'create_task', 'update_task', 'delete_task', 'export']);
     const done = tools.find((t) => t.name === 'done');
     expect(done?.description).toContain('Mark an occurrence of a task done');
     expect(done?.inputSchema).toMatchObject({ type: 'object', properties: { task: { type: 'string' } }, required: ['task'] });

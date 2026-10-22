@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readIntentionFile } from '@sword/schema';
-import { setTimes } from '../src/index.ts';
+import { setProperties, setTimes, taskFile } from '../src/index.ts';
 
 const note = `---
 title: Study Go   # shown in the plan
@@ -89,5 +89,32 @@ describe('setTimes', () => {
 
   it('refuses a note without frontmatter', () => {
     expect(() => setTimes('no frontmatter', { planned: [] })).toThrow('frontmatter');
+  });
+});
+
+describe('setProperties', () => {
+  const source = '---\ntitle: Study Go   # shown in the plan\nduration: 45m\nrepeat: daily\nafter: prayer.fajr\ntags:\n  - learning\n---\n\nNotes.\n';
+
+  it('changes, adds and removes properties, leaving the rest as it was', () => {
+    const updated = setProperties(source, { duration: '1h', before: 'prayer.fajr + 1h', priority: 2, after: undefined, tags: ['learning', 'go'] });
+    expect(updated).toBe('---\ntitle: Study Go   # shown in the plan\nduration: 1h\nrepeat: daily\ntags:\n  - learning\n  - go\nbefore: prayer.fajr + 1h\npriority: 2\n---\n\nNotes.\n');
+  });
+
+  it('quotes what YAML would otherwise read differently', () => {
+    const updated = setProperties('---\nduration: 45m\n---\n', { title: 'a: b', id: '12' });
+    expect(updated).toBe('---\nduration: 45m\ntitle: "a: b"\nid: "12"\n---\n');
+  });
+
+  it('refuses a value with a line break, which a property cannot hold', () => {
+    expect(() => setProperties(source, { title: 'two\nlines' })).toThrow('title: a property value cannot have a line break');
+  });
+});
+
+describe('taskFile', () => {
+  it('writes properties as frontmatter, then the notes', () => {
+    expect(taskFile({ duration: '30m', repeat: 'weekly', repeat_on: ['tue', 'fri'], at: '17:30', priority: 1 }, 'Standing meeting.')).toBe(
+      '---\nduration: 30m\nrepeat: weekly\nrepeat_on:\n  - tue\n  - fri\nat: 17:30\npriority: 1\n---\n\nStanding meeting.\n',
+    );
+    expect(taskFile({ duration: '1h' })).toBe('---\nduration: 1h\n---\n');
   });
 });

@@ -14,6 +14,7 @@ export const INSTRUCTIONS = `Sword is a calendar where a task is a set of rules 
 
 - Call plan to see the schedule. It changes nothing. Times are UTC instants; show them in the result's timeZone. Each placement's date is the user's logical day, and its why says why it is there; unplaced lists what could not be placed and why.
 - Call apply to save the plan the user agreed to, passing the planId from that plan. It refuses if the plan has changed since.
+- To add, change or remove tasks, call create_task, update_task or delete_task. You give rules, never times; then call plan to show the user where things land, and apply once they agree.
 - Call done when the user finished something; undo_done takes it back, the same day only.
 - If a tool reports vault_errors, call check to see which files need fixing.`;
 

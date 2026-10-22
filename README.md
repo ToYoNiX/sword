@@ -78,8 +78,10 @@ no database: everything, including the applied plan, is in your files.
 
 `sword mcp` lets an agent app read and change your plan through MCP: the
 same operations as the CLI (`plan`, `apply`, `done`, `undo_done`, `check`,
-`export`), with the same rules. The app starts it when it needs it, so
-there is nothing to run by hand. With Claude Code:
+`export`), plus `create_task`, `update_task` and `delete_task`, with the same
+rules. The agent gives rules, never times: Sword places the tasks. The app
+starts it when it needs it, so there is nothing to run by hand. With Claude
+Code:
 
 ```sh
 claude mcp add sword -- node ~/path/to/sword/packages/cli/src/main.ts mcp --dir ~/my-calendar

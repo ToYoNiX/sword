@@ -1,12 +1,11 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { Plan } from '@sword/engine';
 import type { LogEntry } from '@sword/schema';
 import { timeZoneOf } from './input.ts';
 import type { Task, Vault } from './load.ts';
 import { appendLog } from './log.ts';
 import { toInstant, toLocal } from './times.ts';
-import { setTimes, writeAtomic } from './write.ts';
+import { updateTaskFile } from './files.ts';
+import { setTimes } from './write.ts';
 
 export interface Applied {
   /** Task files that were updated. */
@@ -61,12 +60,7 @@ async function writeTask(vault: Vault, task: Task, times: { pins: string[]; plan
   } catch (error) {
     return (error as Error).message;
   }
-  const path = join(vault.root, task.file);
-  const current = await readFile(path, 'utf8').catch(() => null);
-  if (current === null) return 'it was deleted while Sword was planning';
-  if (current !== task.source) return 'it changed while Sword was planning';
-  await writeAtomic(path, content);
-  return null;
+  return updateTaskFile(vault, task, content);
 }
 
 function unique(times: string[]): string[] {

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { Plan } from '@sword/engine';
 import type { LogEntry } from '@sword/schema';
 import { VaultError } from '@sword/vault';
-import type { Applied, Vault } from '@sword/vault';
+import type { Applied, Task, Vault } from '@sword/vault';
 
 /**
  * What a caller may do (docs/design.md §9.3). `read` < `propose` < `write`
@@ -35,6 +35,12 @@ export interface VaultAccess {
   load(): Promise<Vault>;
   applyPlan(vault: Vault, plan: Plan, options: { now: string }): Promise<Applied>;
   appendLog(vault: Vault, entries: readonly LogEntry[]): Promise<void>;
+  /** Creates a task file; fails if it exists. */
+  createTask(vault: Vault, file: string, content: string): Promise<void>;
+  /** Replaces a task file unless it changed since it was read; returns why it didn't, or null. */
+  updateTask(vault: Vault, task: Task, content: string): Promise<string | null>;
+  /** Moves a task file to the trash; returns where it went. */
+  trashTask(vault: Vault, task: Task): Promise<string>;
 }
 
 /** Everything a command may use from the outside world. */

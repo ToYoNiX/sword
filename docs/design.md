@@ -627,11 +627,16 @@ The commands so far:
 | `apply` | write | `days?`, `planId?` | The applied plan; files updated, files skipped (and why), missed occurrences logged |
 | `done` | write | `task`, `date?` | The occurrence marked done |
 | `undo_done` | write | `task`, `date?` | The occurrence reopened (today's only) |
+| `create_task` | write | `name`, `properties`, `notes?` | The new task file; refused, with the reasons, if its properties or rules are invalid |
+| `update_task` | write | `task`, `set?`, `unset?` | Only the named properties change; refused if the result is invalid |
+| `delete_task` | write | `task` | The note moved to the vault's `.trash/`, as Obsidian does |
 | `export` | read | `days?` | The plan as iCalendar, and how many events it has |
 
-A command is added when an interface needs it, not in advance: the server,
-MCP and the UI will show which operations they need (moving a task, creating
-one) and what shape they should take.
+A command is added when an interface needs it, not in advance. The task
+commands came from using MCP: an agent without file access couldn't change a
+task at all. They refuse `planned` (written by `apply`) and `pins` (exact
+times need the `pin` scope), and check every change with the schema and the
+engine before writing, so an agent can't leave a broken file behind.
 
 `init` (creating a vault) and `serve` (starting the server) stay CLI-only:
 they come before there is a vault to give a command.

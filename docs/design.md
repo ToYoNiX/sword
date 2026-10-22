@@ -613,7 +613,7 @@ Because they all share this shape, adapters expose the whole list in one
 loop, and a plugin's commands (§8.2) appear in every interface without extra
 code.
 
-**Built:**
+The commands so far:
 
 | Command | Scope | Input | Result |
 |---|---|---|---|
@@ -624,19 +624,9 @@ code.
 | `undo_done` | write | `task`, `date?` | The occurrence reopened (today's only) |
 | `export` | read | `days?` | The plan as iCalendar, and how many events it has |
 
-**Next**, with the server and the UI:
-
-| Command | Scope | Input | Result |
-|---|---|---|---|
-| `list_tasks` | read | `tag?`, `inbox?` | Tasks with their properties and files |
-| `explain` | read | `task`, `date?` | Why an occurrence is where it is, or why it couldn't be placed and what's in the way |
-| `missed` | read | | Missed one-off tasks waiting to be rescheduled or dropped (§7.1) |
-| `create_task` | write | `name`, properties, `notes?` | The new task; refuses a name that exists |
-| `update_task` | write | `task`, `set`, `unset` | The task; only the named properties change |
-| `delete_task` | write | `task` | Moves the note to the vault's `.trash/`, as Obsidian does |
-| `pin` | pin | `task`, `at` | The occurrence at that local time, added to `pins` |
-| `unpin` | pin | `task`, `at` | The pin removed |
-| `preview` | propose | proposed changes to tasks | The plan as it would be, without writing anything |
+A command is added when an interface needs it, not in advance: the server,
+MCP and the UI will show which operations they need (moving a task, creating
+one) and what shape they should take.
 
 `init` (creating a vault) and `serve` (starting the server) stay CLI-only:
 they come before there is a vault to give a command.
@@ -658,8 +648,8 @@ they come before there is a vault to give a command.
 | `pin` | Set exact times (bypass the scheduler with explicit pins) |
 | `admin` | Manage plugins, calendars, and tokens |
 
-**Agents write rules, not times.** The MCP tools are designed around intentions
-and rules (`create_task`, `update_task`, `plan`, `apply`, `explain`).
+**Agents write rules, not times.** The MCP tools are designed around tasks
+and their rules, previewed with `plan` and saved with `apply`.
 Setting a raw time requires the separate `pin` scope. An agent cannot place
 something on top of a prayer, because it never chooses the time; the scheduler
 does.

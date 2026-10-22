@@ -194,24 +194,7 @@ class Planner {
     // placed stays. So each priority level is done in full before the next:
     // first its placements that are still valid, then everything else in it.
     const fitted = open.filter((o) => !o.intention.at && !this.placements.has(o.id)).sort((a, b) => this.compare(a, b));
-    for (const level of byPriority(fitted)) {
-      const retry: Occurrence[] = [];
-      for (const occurrence of level) {
-        const stored = this.existing.get(occurrence.id);
-        if (stored === undefined) {
-          retry.push(occurrence);
-          continue;
-        }
-        const invalid = this.invalidity(occurrence, stored);
-        if (invalid === null) {
-          this.place(occurrence, stored, 'fitted', 'scheduled', 'unchanged: still satisfies its rules');
-        } else {
-          this.moveReasons.set(occurrence.id, invalid);
-          retry.push(occurrence);
-        }
-      }
-      for (const occurrence of retry) this.placeFitted(occurrence);
-    }
+    for (const level of byPriority(fitted)) this.placeLevel(level);
 
     return this.result(known);
   }
@@ -319,6 +302,75 @@ class Planner {
   }
 
   // ── fitted placements ────────────────────────────────────────────────────
+
+  /**
+   * Places one priority level: first the placements still valid where they
+   * are, then the rest. If something then doesn't fit, the free time may just
+   * be cut into gaps too small for it, so the level is placed again from
+   * scratch, and that is kept only if more of it fits (docs/design.md §6.4).
+   */
+  private placeLevel(level: readonly Occurrence[]): void {
+    const before = this.snapshot();
+    const reasons = new Map<string, string>();
+    const retry: Occurrence[] = [];
+    for (const occurrence of level) {
+      const stored = this.existing.get(occurrence.id);
+      if (stored === undefined) {
+        retry.push(occurrence);
+        continue;
+      }
+      const invalid = this.invalidity(occurrence, stored);
+      if (invalid === null) {
+        this.place(occurrence, stored, 'fitted', 'scheduled', 'unchanged: still satisfies its rules');
+      } else {
+        reasons.set(occurrence.id, invalid);
+        retry.push(occurrence);
+      }
+    }
+    for (const occurrence of retry) this.placeFitted(occurrence);
+    const unplaced = (ids: ReadonlySet<string>) => level.filter((o) => ids.has(o.id));
+    const stable = unplaced(new Set(this.unplaced.keys()));
+    if (!stable.some((o) => this.unplaced.get(o.id)?.code === 'no_slot')) {
+      for (const [id, reason] of reasons) this.moveReasons.set(id, reason);
+      return;
+    }
+
+    const kept = this.snapshot();
+    this.restore(before);
+    for (const occurrence of level) this.placeFitted(occurrence);
+    const repacked = unplaced(new Set(this.unplaced.keys()));
+    if (repacked.length >= stable.length) {
+      this.restore(kept);
+      for (const [id, reason] of reasons) this.moveReasons.set(id, reason);
+      return;
+    }
+    const madeRoomFor = stable.filter((o) => !repacked.includes(o)).map((o) => o.intention.title);
+    for (const occurrence of level) {
+      const reason = reasons.get(occurrence.id) ?? `moved to make room for ${madeRoomFor.join(', ')}`;
+      this.moveReasons.set(occurrence.id, reason);
+    }
+  }
+
+  private snapshot() {
+    return {
+      placements: new Map(this.placements),
+      intervals: new Map(this.intervals),
+      unplaced: new Map(this.unplaced),
+      tasks: this.tasks.length,
+    };
+  }
+
+  private restore(state: ReturnType<Planner['snapshot']>): void {
+    for (const [target, source] of [
+      [this.placements, state.placements],
+      [this.intervals, state.intervals],
+      [this.unplaced, state.unplaced],
+    ] as [Map<string, unknown>, Map<string, unknown>][]) {
+      target.clear();
+      for (const [key, value] of source) target.set(key, value);
+    }
+    this.tasks.length = state.tasks;
+  }
 
   /** Higher priority, then longer, then earlier deadline, then earlier date, then id. */
   private compare(a: Occurrence, b: Occurrence): number {

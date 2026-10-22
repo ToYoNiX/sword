@@ -408,7 +408,7 @@ gaps too small for what's left.
 | First fit / best fit | `prefer: earliest` / `prefer: packed` |
 | Allocate largest first | Longer tasks go first at equal priority |
 | Out of memory | Unplaced occurrences, with reasons; a soft error, everything else stays scheduled |
-| Compaction | *Later:* "defragment my week", only on request and previewed, since it moves things |
+| Compaction | When something in a priority level wouldn't fit, the level is placed again from scratch, and that is kept only if more of it fits ("moved to make room for …"). A full "defragment my week" can come later |
 | Paging | *Later:* splitting a long task into chunks with a minimum size |
 
 Fitting the most work is NP-hard in general, so these are rules of thumb, not a

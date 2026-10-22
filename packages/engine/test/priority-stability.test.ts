@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { schedule } from '../src/index.ts';
 import type { AnchorInput, IntentionInput } from '../src/index.ts';
-import { D0, anchor, daily, expectNoOverlaps, input, rerun, slot } from './fixtures.ts';
+import { D0, anchor, daily, expectNoOverlaps, input, rerun, slot, t } from './fixtures.ts';
 
 const fajr = (start: string, end: string): AnchorInput => anchor('prayer.fajr', D0, start, end, { busy: [[start, end]], tags: ['prayer'] });
 const routine: IntentionInput[] = [
@@ -70,5 +70,46 @@ describe('priority and stability', () => {
     expect(slot(after, `adhkar@${D0}`)).toBe('06:06-06:26');
     expect(slot(after, `solving@${D0}`)).toBe('06:26-08:56');
     expect(after.diff.moved).toEqual([]);
+  });
+});
+
+describe('making room when the free time is fragmented', () => {
+  const morning = { after: '08:00', before: '12:00' };
+  const kept = (id: string, start: string, end: string) => ({ occurrenceId: `${id}@${D0}`, start: t(D0, start), end: t(D0, end), state: 'scheduled' as const });
+
+  it('moves placements of the same priority when that lets one more task fit', () => {
+    // a and b leave gaps of 30, 60 and 30 minutes: a 90-minute task fits in none.
+    const plan = schedule(
+      input({
+        intentions: [daily('a', '1h', morning), daily('b', '1h', morning), daily('c', '1h30m', morning)],
+        existing: [kept('a', '08:30', '09:30'), kept('b', '10:30', '11:30')],
+      }),
+    );
+    expect(plan.unplaced).toEqual([]);
+    expect([slot(plan, `c@${D0}`), slot(plan, `a@${D0}`), slot(plan, `b@${D0}`)]).toEqual(['08:00-09:30', '09:30-10:30', '10:30-11:30']);
+    expect(plan.diff.moved).toEqual([expect.objectContaining({ occurrenceId: `a@${D0}`, reason: 'moved to make room for c' })]);
+  });
+
+  it('leaves placements where they are when moving them would not help', () => {
+    // Four hours of work in a four-hour window that already holds two hours: nothing can make 3h fit.
+    const plan = schedule(
+      input({
+        intentions: [daily('a', '1h', morning), daily('b', '1h', morning), daily('c', '3h', morning)],
+        existing: [kept('a', '08:30', '09:30'), kept('b', '10:30', '11:30')],
+      }),
+    );
+    expect(plan.unplaced.map((u) => u.occurrenceId)).toEqual([`c@${D0}`]);
+    expect(plan.diff.moved).toEqual([]);
+  });
+
+  it('never moves a higher priority to make room for a lower one', () => {
+    const plan = schedule(
+      input({
+        intentions: [daily('a', '1h', morning, { priority: 1 }), daily('b', '1h', morning, { priority: 1 }), daily('c', '1h30m', morning)],
+        existing: [kept('a', '08:30', '09:30'), kept('b', '10:30', '11:30')],
+      }),
+    );
+    expect(plan.unplaced.map((u) => u.occurrenceId)).toEqual([`c@${D0}`]);
+    expect(plan.diff.moved).toEqual([]);
   });
 });

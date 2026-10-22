@@ -478,10 +478,12 @@ class Planner {
   private findSlot(occurrence: Occurrence, lo: number, hi: number): Slot {
     const { intention } = occurrence;
     const length = intention.minutes * MINUTE;
-    if (hi <= this.now) {
+    // Work starts on a whole minute, so a window with less than a minute left has passed too.
+    const earliest = Math.ceil(this.now / MINUTE) * MINUTE;
+    if (hi <= earliest) {
       return { kind: 'fail', code: 'window_passed', message: `its window ended at ${this.clock(hi)}`, blockers: [] };
     }
-    const span = { start: Math.max(lo, Math.ceil(this.now / MINUTE) * MINUTE), end: hi };
+    const span = { start: Math.max(lo, earliest), end: hi };
     const hits = this.blockers(occurrence).filter((item) => overlaps(item.interval, span));
     const free = subtract(span, hits.map((item) => item.interval)).filter((gap) => gap.end - gap.start >= length);
     const last = free.at(-1);

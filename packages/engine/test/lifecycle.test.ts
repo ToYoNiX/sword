@@ -24,6 +24,12 @@ describe('time passing', () => {
     expect(slot(plan, `read@${D0}`)).toBe('09:08-09:38');
   });
 
+  it('reports a window with less than a minute left as passed, not as an empty slot', () => {
+    // 11:59:30, and the window ends at 12:00: the next whole minute is the end.
+    const plan = schedule(input({ now: t(D0, '11:59:30'), intentions: [daily('read', '30m', { after: '08:00', before: '12:00' })] }));
+    expect(unplacedOf(plan, `read@${D0}`)).toMatchObject({ code: 'window_passed', message: 'its window ended at 12:00' });
+  });
+
   it('reports a window that already ended today and still plans tomorrow', () => {
     const plan = schedule(input({ now: t(D0, '13:00'), horizonDays: 2, intentions: [read] }));
     expect(unplacedOf(plan, `read@${D0}`).code).toBe('window_passed');

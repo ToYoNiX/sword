@@ -68,11 +68,34 @@ alias sword="node ~/path/to/sword/packages/cli/src/main.ts"
 | `sword done --undo TASK` | Undo a mistaken done, for today's occurrences |
 | `sword export [--days N] [--out FILE]` | Write the schedule as iCalendar, e.g. to publish to Radicale |
 | `sword mcp` | Serve the vault to an agent app over MCP (see below) |
+| `sword plugin add REPO` | Install a plugin from a git URL or a local path |
 
 Commands find the vault the current folder is in, like git, or take `--dir`.
 Tasks are Markdown files in `tasks/`; see the
 [design document](docs/design.md#113-task-files) for the format. Sword keeps
 no database: everything, including the applied plan, is in your files.
+
+### Plugins
+
+A plugin is a git repository with a `manifest.json` and a bundled `main.js`,
+like an Obsidian plugin, so installing needs nothing but the download. For
+prayer times as anchors:
+
+```sh
+sword plugin add https://github.com/ToYoNiX/sword-prayer
+```
+
+```yaml
+# sword.yaml
+time_zone: Africa/Cairo
+location: { latitude: 30.0444, longitude: 31.2357 }
+prayer:
+  method: egyptian
+```
+
+Then tasks can say `after: prayer.asr`, and follow Asr as it moves through the
+year. Plugins only add things (here, anchors named `prayer.*`); they never
+change Sword itself.
 
 ### Using it from an agent
 
@@ -144,11 +167,12 @@ Notes on fairness:
 ## Status
 
 Early development. Working: the scheduling engine, reading and writing vaults,
-the command layer, the CLI, and MCP over stdio. Not yet: plugins (prayer times
-come from [sword-playground](https://github.com/ToYoNiX/sword-playground) for
-now), calendar import, the HTTP server (and remote MCP) and the UI. Known gaps: no
-order between tasks, one occurrence can't be skipped or moved to another day,
-and a day out is reported as conflicting with the prayers inside it.
+the command layer, the CLI, MCP over stdio, and plugins that provide anchors.
+Not yet: calendar import, the HTTP server (and remote MCP) and the UI.
+
+Known gaps: no order between tasks, one occurrence can't be skipped or moved
+to another day, and a day out is reported as conflicting with the prayers
+inside it.
 
 ## Related
 

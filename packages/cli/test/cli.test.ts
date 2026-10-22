@@ -1,9 +1,11 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterEach, describe, expect, it } from 'vitest';
 import { run } from '../src/cli.ts';
 
@@ -358,6 +360,51 @@ describe('the sword command', () => {
     expect(lines.at(-1).at).toMatch(/:\d{2}Z$/);
   });
 
+  it('serves the vault to an agent over MCP, and exits when the agent disconnects', async () => {
+    const dir = await vault({ 'sword.yaml': config, ...tasks });
+    const transport = new StdioClientTransport({ command: process.execPath, args: [main, 'mcp', '--dir', dir], stderr: 'pipe' });
+    let stderr = '';
+    transport.stderr?.on('data', (chunk) => (stderr += String(chunk)));
+    const client = new Client({ name: 'test', version: '1.0.0' });
+    await client.connect(transport);
+    expect((await client.listTools()).tools.map((t) => t.name)).toContain('plan');
+    const plan = await client.callTool({ name: 'plan', arguments: { days: 2 } });
+    expect(plan.structuredContent).toMatchObject({ timeZone: 'Africa/Cairo', titles: { 'study-go': 'Study Go' } });
+    const pid = transport.pid;
+    await client.close();
+    await expect.poll(() => isRunning(pid), { timeout: 5000 }).toBe(false);
+    expect(stderr).toBe('');
+  });
+
+  it('also speaks the 2025 MCP handshake that older agent apps use', async () => {
+    const dir = await vault({ 'sword.yaml': config, ...tasks });
+    const child = spawn(process.execPath, [main, 'mcp', '--dir', dir]);
+    const replies: { id: number; result?: { protocolVersion?: string; tools?: { name: string }[] } }[] = [];
+    let buffer = '';
+    child.stdout.on('data', (chunk) => {
+      buffer += String(chunk);
+      for (let i = buffer.indexOf('\n'); i >= 0; i = buffer.indexOf('\n')) {
+        replies.push(JSON.parse(buffer.slice(0, i)));
+        buffer = buffer.slice(i + 1);
+      }
+    });
+    const send = (message: object) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+    send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'old-app', version: '1.0.0' } } });
+    await expect.poll(() => replies.length).toBe(1);
+    send({ method: 'notifications/initialized' });
+    send({ id: 2, method: 'tools/list', params: {} });
+    await expect.poll(() => replies.length).toBe(2);
+    child.stdin.end();
+    expect(replies[0]?.result?.protocolVersion).toBe('2025-06-18');
+    expect(replies[1]?.result?.tools?.map((t) => t.name)).toContain('apply');
+  });
+
+  it('refuses to serve a folder that is not a vault, on stderr', async () => {
+    const result = await promisify(execFile)(process.execPath, [main, 'mcp', '--dir', await tempDir()]).catch((e: { code: number; stdout: string; stderr: string }) => e);
+    expect(result).toMatchObject({ code: 1, stdout: '' });
+    expect(result.stderr).toContain('is not a Sword vault');
+  });
+
   it('explains the problem, without a stack trace, when the folder is really gone', async () => {
     const result = await fromDeletedFolder('eval "$SWORD plan"');
     expect(result.code).toBe(1);
@@ -365,3 +412,13 @@ describe('the sword command', () => {
     expect(result.stderr).not.toMatch(/^\s+at /m);
   });
 });
+
+function isRunning(pid: number | null | undefined): boolean {
+  if (pid === null || pid === undefined) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

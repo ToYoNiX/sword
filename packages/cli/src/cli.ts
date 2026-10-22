@@ -4,6 +4,7 @@ import { check } from './commands/check.ts';
 import { done } from './commands/done.ts';
 import { exportIcs } from './commands/export.ts';
 import { init } from './commands/init.ts';
+import { mcp } from './commands/mcp.ts';
 import { plan } from './commands/plan.ts';
 import { CommandError } from '@sword/commands';
 import { CliError } from './io.ts';
@@ -19,6 +20,7 @@ Commands:
   sword done <task>       mark today's occurrence of a task done
   sword done --undo <task>  undo that, for today's occurrences
   sword export            write the schedule as iCalendar (.ics)
+  sword mcp               serve the vault to an agent app over MCP (stdio)
 
 Options:
   --dir <path>            the vault (default: the one the current folder is in)
@@ -60,6 +62,10 @@ export async function run(args: string[], io: Io): Promise<number> {
         if (positionals.length === 0) throw new CliError(`which task? e.g. sword done "Study Go"\n\n${USAGE}`, 2);
         if (positionals.length > 1) throw new CliError('one task at a time; put a name with spaces in quotes: sword done "Study Go"', 2);
         return await done(io, { dir: values.dir, task: positionals[0] as string, date: values.date, undo: values.undo === true });
+      }
+      case 'mcp': {
+        const { values } = parsed(() => parseArgs({ args: rest, options: { dir: { type: 'string' } } }));
+        return await mcp(io, values.dir);
       }
       case 'export': {
         const { values } = parsed(() =>

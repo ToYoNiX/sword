@@ -931,7 +931,7 @@ switching or adding runtimes later touches only the I/O layer.
 | Frontmatter | `yaml` |
 | File watching | `chokidar` |
 | HTTP server | Hono (runtime-agnostic) |
-| MCP | `@modelcontextprotocol/sdk` (stdio + streamable HTTP) |
+| MCP | `@modelcontextprotocol/server` (the v2 SDK: stdio + streamable HTTP) |
 | Web UI | React, Vite, TanStack Query; custom day/week time grid |
 | Plugin bundling | esbuild |
 | Tests | Vitest |
@@ -944,7 +944,8 @@ packages/
   schema/      Zod schemas shared by everything
   vault/       files ↔ model, watcher
   commands/    command layer
-  server/      HTTP API + MCP + serves web UI
+  mcp/         the commands as MCP tools, for any transport
+  server/      HTTP API + remote MCP + serves web UI
   cli/         plan · export · sync · serve · plugin add
   web/         React app
   plugin-api/  public API that every plugin builds against

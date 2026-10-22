@@ -67,18 +67,32 @@ alias sword="node ~/path/to/sword/packages/cli/src/main.ts"
 | `sword done TASK [--date D]` | Mark today's (or another day's) occurrence done |
 | `sword done --undo TASK` | Undo a mistaken done, for today's occurrences |
 | `sword export [--days N] [--out FILE]` | Write the schedule as iCalendar, e.g. to publish to Radicale |
+| `sword mcp` | Serve the vault to an agent app over MCP (see below) |
 
 Commands find the vault the current folder is in, like git, or take `--dir`.
 Tasks are Markdown files in `tasks/`; see the
 [design document](docs/design.md#113-task-files) for the format. Sword keeps
 no database: everything, including the applied plan, is in your files.
 
+### Using it from an agent
+
+`sword mcp` lets an agent app read and change your plan through MCP: the
+same operations as the CLI (`plan`, `apply`, `done`, `undo_done`, `check`,
+`export`), with the same rules. The app starts it when it needs it, so
+there is nothing to run by hand. With Claude Code:
+
+```sh
+claude mcp add sword -- node ~/path/to/sword/packages/cli/src/main.ts mcp --dir ~/my-calendar
+```
+
+Pass `--dir`: the app may start it from any folder.
+
 ## Status
 
 Early development. Working: the scheduling engine, reading and writing vaults,
-the command layer, and the CLI. Not yet: plugins (prayer times come from
+the command layer, the CLI, and MCP over stdio. Not yet: plugins (prayer times come from
 [sword-playground](https://github.com/ToYoNiX/sword-playground) for now),
-calendar import, the server, MCP and the UI.
+calendar import, the HTTP server (and remote MCP) and the UI.
 
 ## Related
 

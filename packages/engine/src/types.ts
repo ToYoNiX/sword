@@ -64,6 +64,8 @@ export interface AnchorInput {
   /** The part of the window that occupies the user's time. */
   busy?: TimeRange[];
   tags?: string[];
+  /** A name to show, e.g. "Asr"; the id if left out. */
+  title?: string;
 }
 
 /** Something with an authoritative time, e.g. an imported meeting. */
@@ -250,9 +252,21 @@ export interface DayInfo {
   parts: { name: string; start: string; end: string }[];
 }
 
+/** A busy part of an anchor, e.g. the time of a prayer, for showing alongside the placements. */
+export interface BusyTime {
+  anchor: string;
+  date: string;
+  title: string;
+  start: string;
+  end: string;
+  tags: string[];
+}
+
 export interface Plan {
   /** The logical days of the horizon, in order. */
   days: DayInfo[];
+  /** The busy parts of anchors on those days, in time order. */
+  busy: BusyTime[];
   placements: Placement[];
   unplaced: Unplaced[];
   conflicts: Conflict[];

@@ -24,7 +24,7 @@ export async function sync(io: Io, options: SyncOptions): Promise<number> {
   const calendar = new CalDav({ url: config.caldav.url, ...(config.caldav.username !== undefined && { username: config.caldav.username }), ...(password !== undefined && { password }) });
   let result;
   try {
-    result = await syncPlan(calendar, plan.placements, titles, now);
+    result = await syncPlan(calendar, plan.placements, titles, now, plan.busy);
   } catch (error) {
     if (error instanceof CalDavError) throw new CliError(error.message);
     throw error;

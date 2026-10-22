@@ -17,7 +17,7 @@ export const exportIcs = defineCommand({
   input: z.object({ days }).strict(),
   async run(ctx, input): Promise<ExportResult> {
     const { plan, titles, now } = await planVault(ctx, input.days);
-    const ics = toIcs(plan.placements, { titles: new Map(Object.entries(titles)), stamp: now });
-    return { ics, events: plan.placements.filter((p) => p.state !== 'missed').length };
+    const ics = toIcs(plan.placements, { titles: new Map(Object.entries(titles)), stamp: now, busy: plan.busy });
+    return { ics, events: plan.placements.filter((p) => p.state !== 'missed').length + plan.busy.length };
   },
 });

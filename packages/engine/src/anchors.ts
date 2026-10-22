@@ -12,6 +12,8 @@ export interface ResolvedAnchor {
   /** Sorted by start. */
   readonly busy: readonly Interval[];
   readonly tags: readonly string[];
+  /** A name to show; the id if there is none. */
+  readonly title?: string;
 }
 
 /** How a reference is used; decides what the `auto` edge means. */
@@ -108,5 +110,6 @@ function resolveAnchor(raw: AnchorInput): ResolvedAnchor {
       return interval;
     })
     .sort((a, b) => a.start - b.start);
-  return { id: raw.id, date, window: { start, end }, busy, tags: [...(raw.tags ?? [])] };
+  const resolved = { id: raw.id, date, window: { start, end }, busy, tags: [...(raw.tags ?? [])] };
+  return typeof raw.title === 'string' && raw.title !== '' ? { ...resolved, title: raw.title } : resolved;
 }

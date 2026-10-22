@@ -1,5 +1,5 @@
 import { toIcs } from '@sword/commands';
-import type { Placement } from '@sword/engine';
+import type { BusyTime, Placement } from '@sword/engine';
 import type { CalDav, RemoteEvent } from './caldav.ts';
 
 export interface SyncResult {
@@ -15,8 +15,8 @@ export interface SyncResult {
 const PUBLISHED = new Set(['scheduled', 'pinned', 'done']);
 
 /**
- * Makes the calendar show the plan: one event per placement, each in its own
- * file named after the occurrence. Events Sword didn't make are never
+ * Makes the calendar show the plan: one event per placement, and one per busy
+ * time of an anchor (a prayer), each in its own file named after it. Events Sword didn't make are never
  * touched, and Sword's events that are over stay as history.
  */
 export async function syncPlan(
@@ -24,6 +24,7 @@ export async function syncPlan(
   placements: readonly Placement[],
   titles: Record<string, string>,
   now: string,
+  busy: readonly BusyTime[] = [],
 ): Promise<SyncResult> {
   const created = await calendar.ensureCalendar('Sword');
   const remote = new Map((await calendar.list()).map((event) => [event.name, event]));
@@ -33,6 +34,9 @@ export async function syncPlan(
   for (const placement of placements) {
     if (!PUBLISHED.has(placement.state)) continue;
     wanted.set(eventName(placement.occurrenceId), toIcs([placement], { titles: new Map(Object.entries(titles)), stamp: now }));
+  }
+  for (const time of busy) {
+    wanted.set(eventName(`anchor:${time.anchor}@${time.date}`), toIcs([], { titles: new Map(), stamp: now, busy: [time] }));
   }
 
   for (const [name, data] of wanted) {
@@ -69,7 +73,7 @@ export function eventName(occurrenceId: string): string {
 }
 
 function isSwords(event: RemoteEvent): boolean {
-  return /^X-SWORD-OCCURRENCE:/m.test(unfold(event.data));
+  return /^X-SWORD-(?:OCCURRENCE|ANCHOR):/m.test(unfold(event.data));
 }
 
 /**

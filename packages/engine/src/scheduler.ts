@@ -30,6 +30,7 @@ import { parseSelector } from './selectors.ts';
 import type { Selector } from './selectors.ts';
 import { addDays, assertTimeZone, formatClock, localDateTimeMs, parseInstant, toIso } from './time.ts';
 import type {
+  BusyTime,
   Conflict,
   DayInfo,
   Diff,
@@ -672,6 +673,7 @@ class Planner {
     );
     return {
       days: this.dates.map((date) => this.dayInfo(date)),
+      busy: this.busyTimes(),
       placements,
       unplaced: [...this.unplaced.values()].sort((a, b) => compareText(a.date ?? '~', b.date ?? '~') || compareText(a.occurrenceId, b.occurrenceId)),
       conflicts: [...this.conflicts].sort((a, b) => compareText(a.occurrenceId, b.occurrenceId)),
@@ -680,6 +682,23 @@ class Planner {
       errors: sortIssues(this.errors),
       warnings: sortIssues(this.warnings),
     };
+  }
+
+  private busyTimes(): BusyTime[] {
+    return this.anchors
+      .all()
+      .filter((anchor) => this.dateSet.has(anchor.date))
+      .flatMap((anchor) =>
+        anchor.busy.map((interval) => ({
+          anchor: anchor.id,
+          date: anchor.date,
+          title: anchor.title ?? anchor.id,
+          start: toIso(interval.start),
+          end: toIso(interval.end),
+          tags: [...anchor.tags],
+        })),
+      )
+      .sort((a, b) => compareNumber(Date.parse(a.start), Date.parse(b.start)) || compareText(a.anchor, b.anchor));
   }
 
   private dayInfo(date: string): DayInfo {

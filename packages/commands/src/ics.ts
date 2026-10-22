@@ -4,13 +4,15 @@
  * the same when the occurrence moves, so subscribers update instead of
  * duplicating it. This moves into the ical plugin once plugins exist.
  */
-import type { Placement } from '@sword/engine';
+import type { BusyTime, Placement } from '@sword/engine';
 
 export interface IcsOptions {
   /** Task titles by intention id. */
   titles: ReadonlyMap<string, string>;
   /** When the file is written (DTSTAMP). */
   stamp: string;
+  /** Busy times of anchors, e.g. prayers, published as events of their own. */
+  busy?: readonly BusyTime[];
 }
 
 const EXPORTED = new Set(['scheduled', 'pinned', 'done']);
@@ -29,6 +31,19 @@ export function toIcs(placements: readonly Placement[], options: IcsOptions): st
       `DESCRIPTION:${text(p.state === 'done' ? 'Done.' : p.why)}`,
       `X-SWORD-OCCURRENCE:${text(p.occurrenceId)}`,
       `X-SWORD-KIND:${p.kind}`,
+      'END:VEVENT',
+    );
+  }
+  for (const b of options.busy ?? []) {
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${text(`sword-${b.anchor}@${b.date}`)}`,
+      `DTSTAMP:${utc(options.stamp)}`,
+      `DTSTART:${utc(b.start)}`,
+      `DTEND:${utc(b.end)}`,
+      `SUMMARY:${text(b.title)}`,
+      ...(b.tags.length > 0 ? [`CATEGORIES:${b.tags.map(text).join(',')}`] : []),
+      `X-SWORD-ANCHOR:${text(`${b.anchor}@${b.date}`)}`,
       'END:VEVENT',
     );
   }

@@ -347,13 +347,15 @@ describe('sword sync', () => {
       const dir = await vault({ 'sword.yaml': synced(server.url), 'tasks/study-go.md': study, 'tasks/Read Al-Kahf.md': '---\nduration: 20m\nrepeat: daily\nafter: 07:00\n---\n' });
       const first = await sword(['sync', '--days', '3'], dir, sunday);
       expect(first).toMatchObject({ code: 0, err: '' });
-      expect(first.out).toBe(`Created the calendar at ${server.url}\nSynced 6 events to ${server.url}: 6 added.\n`);
-      expect(server.items.size).toBe(6);
+      // 6 placements, and the busy work hours (Sun–Tue) from sword.yaml.
+      expect(first.out).toBe(`Created the calendar at ${server.url}\nSynced 9 events to ${server.url}: 9 added.\n`);
+      expect(server.items.size).toBe(9);
       expect([...server.items.values()].some((i) => i.data.includes('SUMMARY:Read Al-Kahf'))).toBe(true);
+      expect([...server.items.values()].filter((i) => i.data.includes('SUMMARY:work') && i.data.includes('X-SWORD-ANCHOR:work@'))).toHaveLength(3);
 
       server.requests.length = 0;
       const second = await sword(['sync', '--days', '3'], dir, sunday);
-      expect(second.out).toBe(`Already in sync: 6 events at ${server.url}\n`);
+      expect(second.out).toBe(`Already in sync: 9 events at ${server.url}\n`);
       expect(server.requests.filter((r) => r.startsWith('PUT') || r.startsWith('DELETE'))).toEqual([]);
     } finally {
       await server.close();
@@ -371,8 +373,8 @@ describe('sword sync', () => {
       // Monday 12:00 in Cairo: Sunday is history.
       const result = await sword(['sync', '--days', '2'], dir, '2026-10-26T09:00:00Z');
       // Tuesday's study moved; the walk's Monday and Tuesday events go; Sunday's
-      // events and this morning's study are over, so they stay as history.
-      expect(result.out).toBe(`Synced 4 events to ${server.url}: 1 updated, 2 removed, 3 past events kept.\n`);
+      // events (work hours too) and this morning's study are over, so they stay as history.
+      expect(result.out).toBe(`Synced 7 events to ${server.url}: 1 updated, 2 removed, 4 past events kept.\n`);
       const summaries = [...server.items.values()].map((i) => /SUMMARY:(.*)/.exec(i.data)?.[1]);
       expect(summaries.filter((s) => s === 'walk')).toHaveLength(1);
     } finally {

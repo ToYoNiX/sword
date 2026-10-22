@@ -63,4 +63,6 @@ export interface Anchor {
   /** The parts of the window that occupy the user's time; Sword keeps them clear. */
   busy?: { start: string; end: string }[];
   tags?: string[];
+  /** A name to show in calendars, e.g. "Asr"; the id if left out. */
+  title?: string;
 }

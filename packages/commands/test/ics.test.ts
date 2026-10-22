@@ -85,6 +85,17 @@ describe('toIcs', () => {
     expect(events(text).map((e) => e.occurrence)).toEqual(['a', 'b', 'c']);
   });
 
+  it('adds busy times such as prayers as events of their own, marked as Sword\'s', () => {
+    const asr = { anchor: 'prayer.asr', date: '2026-10-25', title: 'Asr', start: '2026-10-25T12:49:00Z', end: '2026-10-25T13:19:00Z', tags: ['prayer'] };
+    const text = toIcs([placement({})], { titles: new Map([['study-go', 'Study Go']]), stamp: '2026-10-21T16:49:00Z', busy: [asr] });
+    const calendar = new ICAL.Component(ICAL.parse(text));
+    const asrEvent = calendar.getAllSubcomponents('vevent').map((v) => new ICAL.Event(v)).find((e) => e.summary === 'Asr');
+    expect(asrEvent?.uid).toBe('sword-prayer.asr@2026-10-25');
+    expect(asrEvent?.startDate.toJSDate().toISOString()).toBe('2026-10-25T12:49:00.000Z');
+    expect(asrEvent?.component.getFirstPropertyValue('x-sword-anchor')).toBe('prayer.asr@2026-10-25');
+    expect(asrEvent?.component.getFirstPropertyValue('categories')).toBe('prayer');
+  });
+
   it('writes an empty calendar when there is nothing to export', () => {
     expect(events(ics([]))).toEqual([]);
   });

@@ -141,28 +141,14 @@ Notes on fairness:
 - **Both used the same fixed stand-ins for prayer times,** since Sword's
   prayer plugin doesn't exist yet.
 
-**The test also found problems in Sword,** now fixed:
-
-- A kept placement could block a higher-priority task, so shifting prayers
-  dropped the morning adhkar.
-- A pin on a day the task doesn't occur was silently ignored.
-- Fragmented free time left 2 tasks unplaced even though a full schedule
-  existed.
-- MCP had no way to change a task.
-
-**Still open:**
-
-- There's no ordering between tasks, so course sections can come out of order.
-- A day out is reported as conflicting with the prayers inside it.
-- One occurrence can't be skipped or moved to another day.
-- `plan` and `apply` return the whole plan.
-
 ## Status
 
 Early development. Working: the scheduling engine, reading and writing vaults,
 the command layer, the CLI, and MCP over stdio. Not yet: plugins (prayer times
 come from [sword-playground](https://github.com/ToYoNiX/sword-playground) for
-now), calendar import, the HTTP server (and remote MCP) and the UI.
+now), calendar import, the HTTP server (and remote MCP) and the UI. Known gaps: no
+order between tasks, one occurrence can't be skipped or moved to another day,
+and a day out is reported as conflicting with the prayers inside it.
 
 ## Related
 

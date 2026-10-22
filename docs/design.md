@@ -353,9 +353,14 @@ Greedy interval arithmetic is enough to start with.
 5. Order the **fitted** occurrences: higher priority first, then **longer
    first** (more work, and harder to fit later), then earlier deadline, then
    earlier date, then id.
-6. In that order, **keep** every existing placement that is still valid
-   (stability), and mark it busy.
-7. In that order, place each remaining occurrence:
+6. Go through the fitted occurrences **one priority level at a time**,
+   highest first. Within a level, first **keep** every existing placement
+   that is still valid (stability) and mark it busy, then place the rest of
+   the level as in step 7. A higher priority always wins: a lower-priority
+   placement never keeps a slot that a higher priority needs, because it is
+   only checked once the higher levels are placed. Within the same priority,
+   what is placed stays, so a new task doesn't reshuffle the others.
+7. Placing an occurrence:
    1. Compute the allowed region from the window rules and the deadline.
    2. Subtract busy time and anything matched by `avoid` or global avoid rules.
    3. Keep gaps at least as long as the duration, starting no earlier than now

@@ -6,9 +6,10 @@
  *  1. Settle occurrences from history: done, missed, or already started.
  *  2. Place pins, then formulas (`at`). These never move; overlaps are
  *     reported as conflicts.
- *  3. Keep existing fitted placements that are still valid (stability).
- *  4. Place the remaining fitted occurrences: higher priority first, longer
- *     tasks first when priorities are equal.
+ *  3. Fitted occurrences, one priority level at a time, highest first:
+ *     keep the level's existing placements that are still valid (stability),
+ *     then place the rest of the level, longer tasks first. A higher priority
+ *     always wins; within a priority, what is placed stays.
  */
 import { buildAnchorIndex } from './anchors.ts';
 import type { AnchorIndex } from './anchors.ts';
@@ -189,23 +190,28 @@ class Planner {
     }
     this.findConflicts();
 
+    // A higher priority always wins; within the same priority, what is already
+    // placed stays. So each priority level is done in full before the next:
+    // first its placements that are still valid, then everything else in it.
     const fitted = open.filter((o) => !o.intention.at && !this.placements.has(o.id)).sort((a, b) => this.compare(a, b));
-    const retry: Occurrence[] = [];
-    for (const occurrence of fitted) {
-      const stored = this.existing.get(occurrence.id);
-      if (stored === undefined) {
-        retry.push(occurrence);
-        continue;
+    for (const level of byPriority(fitted)) {
+      const retry: Occurrence[] = [];
+      for (const occurrence of level) {
+        const stored = this.existing.get(occurrence.id);
+        if (stored === undefined) {
+          retry.push(occurrence);
+          continue;
+        }
+        const invalid = this.invalidity(occurrence, stored);
+        if (invalid === null) {
+          this.place(occurrence, stored, 'fitted', 'scheduled', 'unchanged: still satisfies its rules');
+        } else {
+          this.moveReasons.set(occurrence.id, invalid);
+          retry.push(occurrence);
+        }
       }
-      const invalid = this.invalidity(occurrence, stored);
-      if (invalid === null) {
-        this.place(occurrence, stored, 'fitted', 'scheduled', 'unchanged: still satisfies its rules');
-      } else {
-        this.moveReasons.set(occurrence.id, invalid);
-        retry.push(occurrence);
-      }
+      for (const occurrence of retry) this.placeFitted(occurrence);
     }
-    for (const occurrence of retry) this.placeFitted(occurrence);
 
     return this.result(known);
   }
@@ -591,7 +597,15 @@ class Planner {
     for (const occurrenceId of this.pins.keys()) {
       if (known.has(occurrenceId)) continue;
       const intentionId = intentionIdOf(occurrenceId);
-      if (this.intentions.has(intentionId) || this.invalidIds.has(intentionId)) continue; // just outside the horizon
+      if (this.invalidIds.has(intentionId)) continue; // its errors are reported already
+      if (this.intentions.has(intentionId)) {
+        // A pin beyond the plan waits for its day; one inside it has nothing to move.
+        const date = occurrenceId.slice(intentionId.length + 1);
+        if (this.dateSet.has(date)) {
+          this.warnings.push({ code: 'unknown_occurrence', message: `pinned on ${date}, when ${intentionId} does not occur`, occurrenceId, intentionId });
+        }
+        continue;
+      }
       this.warnings.push({ code: 'unknown_occurrence', message: `pin for unknown intention "${intentionId}"`, occurrenceId });
     }
   }
@@ -704,6 +718,17 @@ function matches(selector: Selector, item: Item): boolean {
 
 function refs(items: readonly Item[]): string[] {
   return [...new Set(items.map((item) => item.ref))].sort(compareText);
+}
+
+/** Occurrences already sorted by priority, split into one list per priority. */
+function byPriority(occurrences: readonly Occurrence[]): Occurrence[][] {
+  const levels: Occurrence[][] = [];
+  for (const occurrence of occurrences) {
+    const level = levels.at(-1);
+    if (level && level[0]?.intention.priority === occurrence.intention.priority) level.push(occurrence);
+    else levels.push([occurrence]);
+  }
+  return levels;
 }
 
 function refOf(raw: unknown): string {

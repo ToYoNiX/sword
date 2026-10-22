@@ -27,6 +27,20 @@ describe('a pin given by task', () => {
     expect(placement(plan, 'report')).toMatchObject({ kind: 'pinned', start: t(day(2), '09:00') });
   });
 
+  it('on a day the task does not occur produces a warning, instead of doing nothing silently', () => {
+    const meeting: IntentionInput = { id: 'meeting', duration: '30m', repeat: { on: ['tue', 'fri'] }, at: '17:30' };
+    // D0 is a Sunday; day(3) is Wednesday.
+    const plan = schedule(input({ horizonDays: 7, intentions: [meeting], pins: [{ intentionId: 'meeting', start: t(day(3), '17:30') }] }));
+    expect(plan.warnings).toEqual([
+      expect.objectContaining({ code: 'unknown_occurrence', occurrenceId: `meeting@${day(3)}`, message: `pinned on ${day(3)}, when meeting does not occur` }),
+    ]);
+  });
+
+  it('beyond the plan is quietly kept for later', () => {
+    const plan = schedule(input({ horizonDays: 1, intentions: [night], pins: [{ intentionId: 'night', start: t(day(5), '23:00') }] }));
+    expect(plan.warnings).toEqual([]);
+  });
+
   it('for an unknown task produces a warning', () => {
     const plan = schedule(input({ pins: [{ intentionId: 'nope', start: t(D0, '08:00') }] }));
     expect(plan.warnings).toEqual([expect.objectContaining({ code: 'unknown_occurrence', occurrenceId: 'nope' })]);

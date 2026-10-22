@@ -23,7 +23,8 @@ function currentFolder(): string {
 
 process.exitCode = await run(process.argv.slice(2), {
   cwd: currentFolder,
-  now: () => new Date().toISOString(),
+  // Whole seconds: these times end up in the log, where milliseconds are noise.
+  now: () => new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
   out: (text) => process.stdout.write(text),
   err: (text) => process.stderr.write(text),
   color: process.stdout.isTTY === true && process.env['NO_COLOR'] === undefined,

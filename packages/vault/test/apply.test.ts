@@ -204,6 +204,18 @@ describe('markDone and reopen', () => {
     expect(() => markDone(v, plan, { ...request, now: at('2026-10-25', '06:00') })).toThrow(new VaultError(message));
   });
 
+  it('finds a task by its title too, unless the title is ambiguous', async () => {
+    const root = await applied();
+    await writeFile(join(root, 'tasks/study.md'), study.replace('duration', 'title: Study Go\nduration'));
+    await writeFile(join(root, 'tasks/gym.md'), '---\ntitle: Gym\nduration: 1h\nrepeat: daily\nafter: 17:00\n---\n');
+    await writeFile(join(root, 'tasks/gym-2.md'), '---\ntitle: Gym\nduration: 1h\nrepeat: daily\nafter: 19:00\n---\n');
+    const { v, plan } = await planAt(root, at('2026-10-25', '06:00'));
+    expect(markDone(v, plan, { task: 'Study Go', now: at('2026-10-25', '06:00') }).occurrenceId).toBe('study@2026-10-25');
+    expect(() => markDone(v, plan, { task: 'Gym', now: at('2026-10-25', '06:00') })).toThrow(
+      new VaultError('"Gym" is the title of 2 tasks; use the note name: gym, gym-2'),
+    );
+  });
+
   it('refuses to mark the same occurrence done twice', async () => {
     const root = await applied();
     const { v, plan } = await planAt(root, at('2026-10-25', '06:00'));

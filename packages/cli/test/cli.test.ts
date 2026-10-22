@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -197,6 +197,97 @@ describe('sword plan', () => {
   });
 });
 
+describe('sword apply', () => {
+  const study = '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nbefore: work.start or 08:00\nprefer: latest\n---\n\nChapter 7.\n';
+
+  it('saves the plan in the task files; afterwards there is nothing to apply', async () => {
+    const dir = await vault({ 'sword.yaml': config, 'tasks/study-go.md': study });
+    const preview = await sword(['plan', '--days', '2'], dir);
+    expect(preview.out).toContain('Changes, not applied yet\n  2 new\nRun "sword apply" to save them in your task files.\n');
+
+    const applied = await sword(['apply', '--days', '2'], dir);
+    expect(applied.code).toBe(0);
+    expect(applied.out).toBe('Applied: 2 new.\nUpdated 1 task file.\n');
+    expect(await readFile(join(dir, 'tasks/study-go.md'), 'utf8')).toBe(
+      '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nbefore: work.start or 08:00\nprefer: latest\nplanned:\n  - 2026-10-25 08:15\n  - 2026-10-26 08:15\n---\n\nChapter 7.\n',
+    );
+
+    expect((await sword(['plan', '--days', '2'], dir)).out).not.toContain('Changes');
+    expect((await sword(['apply', '--days', '2'], dir)).out).toBe('Nothing to apply: your task files already hold this plan.\n');
+  });
+
+  it('explains moves, and logs what was missed once the time has passed', async () => {
+    const dir = await vault({ 'sword.yaml': config, 'tasks/study-go.md': study });
+    await sword(['apply', '--days', '2'], dir);
+    // Study Go now has to end by 08:30: the planned 08:15–09:00 no longer fits.
+    const edited = (await readFile(join(dir, 'tasks/study-go.md'), 'utf8')).replace('work.start or 08:00', '08:30');
+    await writeFile(join(dir, 'tasks/study-go.md'), edited);
+    const moved = await sword(['plan', '--days', '2'], dir);
+    expect(moved.out).toContain('Study Go (Sun 25 Oct): 08:15 → 07:45, because it is outside its window');
+
+    // Monday 10:00 in Cairo: Sunday's 08:15 came and went.
+    const later = await sword(['apply', '--days', '2'], dir, '2026-10-26T07:00:00Z');
+    expect(later.out).toContain('Study Go (Sun 25 Oct): missed');
+    expect(await readFile(join(dir, 'log/2026-10.jsonl'), 'utf8')).toContain('"occurrence":"study-go@2026-10-25","state":"missed"');
+  });
+
+  it('reports a task file that could not be updated, and exits 1', async () => {
+    const dir = await vault({ 'sword.yaml': config, 'tasks/study-go.md': study.replace('prefer: latest\n', 'prefer: latest\nplanned: &p\n  - 2026-10-20 08:15\nother: *p\n') });
+    const result = await sword(['apply', '--days', '1'], dir);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("tasks/study-go.md was not updated: its frontmatter is written in a way Sword can't safely edit");
+  });
+
+  it('refuses to apply when files have errors, and changes nothing', async () => {
+    const dir = await vault({ 'sword.yaml': config, 'tasks/study-go.md': study, 'tasks/bad.md': '---\nduration: 45\n---\n' });
+    const result = await sword(['apply'], dir);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('sword check');
+    expect(await readFile(join(dir, 'tasks/study-go.md'), 'utf8')).toBe(study);
+  });
+});
+
+describe('sword done', () => {
+  const files = {
+    'sword.yaml': config,
+    'tasks/study-go.md': '---\ntitle: Study Go\nduration: 45m\nrepeat: daily\nbefore: work.start or 08:00\nprefer: latest\nplanned: 2026-10-25 08:15\n---\n',
+    'tasks/report.md': '---\ntitle: Write report\nduration: 2h\nafter: work\ndeadline: 2026-10-26\n---\n',
+  };
+  // Sunday Oct 25, 10:00 in Cairo.
+  const now = '2026-10-25T07:00:00Z';
+
+  it("marks today's occurrence done, by note name or title, and undoes it", async () => {
+    const dir = await vault(files);
+    const done = await sword(['done', 'Study Go'], dir, now);
+    expect(done).toMatchObject({ code: 0, out: 'Study Go (Sun 25 Oct) is done.\n' });
+    expect((await sword(['plan', '--days', '1'], dir, now)).out).toContain('08:15–09:00  Study Go · done');
+
+    const undo = await sword(['done', '--undo', 'study-go'], dir, now);
+    expect(undo).toMatchObject({ code: 0, out: 'Study Go (Sun 25 Oct) is not done anymore.\n' });
+    expect((await sword(['plan', '--days', '1'], dir, now)).out).toContain('08:15–09:00  Study Go · missed');
+    expect((await readFile(join(dir, 'log/2026-10.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l).state)).toEqual(['done', 'open']);
+  });
+
+  it('marks a one-off task, and another day with --date', async () => {
+    const dir = await vault(files);
+    expect((await sword(['done', 'report'], dir, now)).out).toBe('Write report is done.\n');
+    expect((await sword(['done', 'study-go', '--date', '2026-10-26'], dir, now)).out).toBe('Study Go (Mon 26 Oct) is done.\n');
+  });
+
+  it.each<[string, string[], number, string]>([
+    ['no task', ['done'], 2, 'which task'],
+    ['two tasks', ['done', 'a', 'b'], 2, 'one task at a time'],
+    ['an unknown task', ['done', 'nope'], 1, 'no task named "nope"'],
+    ['a date on a one-off task', ['done', 'report', '--date', '2026-10-25'], 1, 'Write report is a one-off task'],
+    ['a bad date', ['done', 'study-go', '--date', 'friday'], 1, '"friday" is not a date'],
+    ['undoing something not done', ['done', '--undo', 'study-go'], 1, 'Study Go is not marked done on Sun 25 Oct'],
+  ])('refuses %s', async (_, args, code, message) => {
+    const result = await sword(args, await vault(files), now);
+    expect(result.code).toBe(code);
+    expect(result.err).toContain(message);
+  });
+});
+
 describe('sword export', () => {
   it('prints the plan as iCalendar', async () => {
     const dir = await vault({ 'sword.yaml': config, ...tasks });
@@ -251,6 +342,20 @@ describe('the sword command', () => {
     expect(result.code).toBe(0);
     // The plan's header line (what's in the plan depends on the time of day).
     expect(result.stdout).toMatch(/\n\S+ · now \w{3} \d+ \w{3} \d{2}:\d{2}\n/);
+  });
+
+  it('plans, applies, marks done and undoes, as a real process', async () => {
+    const dir = join(await tempDir(), 'calendar');
+    const exec = (args: string[]) => promisify(execFile)(process.execPath, [main, ...args, '--dir', dir]);
+    await promisify(execFile)(process.execPath, [main, 'init', dir]);
+    await exec(['apply']);
+    expect(await readFile(join(dir, 'tasks/plan-the-day.md'), 'utf8')).toContain('planned:\n  - ');
+    expect((await exec(['done', 'plan-the-day'])).stdout).toContain('Plan the day');
+    expect((await exec(['done', '--undo', 'Plan the day'])).stdout).toContain('is not done anymore');
+    const log = (await readdir(join(dir, 'log'))).map((f) => join(dir, 'log', f));
+    const lines = (await Promise.all(log.map((f) => readFile(f, 'utf8')))).join('').trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.slice(-2).map((l) => l.state)).toEqual(['done', 'open']);
+    expect(lines.at(-1).at).toMatch(/:\d{2}Z$/);
   });
 
   it('explains the problem, without a stack trace, when the folder is really gone', async () => {

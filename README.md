@@ -62,12 +62,16 @@ alias sword="node ~/path/to/sword/packages/cli/src/main.ts"
 |---|---|
 | `sword init [dir]` | Create a vault with `sword.yaml` and an example task |
 | `sword check` | List every problem in the vault, by file (exit 1 on errors) |
-| `sword plan [--days N] [--json]` | Print the schedule, then what couldn't be placed and the inbox |
+| `sword plan [--days N] [--json]` | Preview the schedule: each day, what changed since it was applied, what couldn't be placed, and the inbox. Writes nothing |
+| `sword apply [--days N]` | Save the schedule: each task file gets a `planned` list of its times, and missed occurrences go to the log |
+| `sword done TASK [--date D]` | Mark today's (or another day's) occurrence done |
+| `sword done --undo TASK` | Undo a mistaken done, for today's occurrences |
 | `sword export [--days N] [--out FILE]` | Write the schedule as iCalendar, e.g. to publish to Radicale |
 
 Commands find the vault the current folder is in, like git, or take `--dir`.
 Tasks are Markdown files in `tasks/`; see the
-[design document](docs/design.md#113-task-files) for the format.
+[design document](docs/design.md#113-task-files) for the format. Sword keeps
+no database: everything, including the applied plan, is in your files.
 
 ## Status
 

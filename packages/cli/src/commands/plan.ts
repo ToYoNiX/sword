@@ -1,8 +1,9 @@
 import { Temporal } from 'temporal-polyfill';
 import { EngineInputError, schedule } from '@sword/engine';
 import type { Placement, Plan } from '@sword/engine';
-import { scheduleInput } from '@sword/vault';
+import { formatDate, scheduleInput } from '@sword/vault';
 import type { Vault } from '@sword/vault';
+import { describeChanges, hasChanges } from '../changes.ts';
 import { CliError, paint } from '../io.ts';
 import type { Io } from '../io.ts';
 import { openVault } from '../vault.ts';
@@ -65,6 +66,14 @@ function formatPlan(io: Io, vault: Vault, plan: Plan, timeZone: string): string 
   const section = (name: string, style: 'yellow' | 'red' | 'bold', items: string[]) => {
     if (items.length > 0) lines.push(paint(io, style, name), ...items.map((i) => `  ${i}`), '');
   };
+  if (hasChanges(plan)) {
+    lines.push(
+      paint(io, 'yellow', 'Changes, not applied yet'),
+      ...describeChanges(vault, plan, timeZone).map((c) => `  ${c}`),
+      paint(io, 'dim', 'Run "sword apply" to save them in your task files.'),
+      '',
+    );
+  }
   // Windows that already passed today aren't problems, just the past: one line, not a list.
   const passed = plan.unplaced.filter((u) => u.code === 'window_passed');
   section(
@@ -93,8 +102,4 @@ function formatPlan(io: Io, vault: Vault, plan: Plan, timeZone: string): string 
     lines.push(paint(io, 'dim', passed.length === 1 ? '1 occurrence earlier today was not planned: its time had passed.' : `${passed.length} occurrences earlier today were not planned: their time had passed.`));
   }
   return `${lines.join('\n').trimEnd()}\n`;
-}
-
-function formatDate(date: string): string {
-  return Temporal.PlainDate.from(date).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }

@@ -7,7 +7,7 @@ import type { Task, Vault } from './load.ts';
 import { formatDate } from './times.ts';
 
 export interface DoneRequest {
-  /** The task's id: its note name, or its `id` property. */
+  /** The task's id (its note name, or its `id` property), or its title. */
   task: string;
   /** The logical day of a repeating task; today if left out. */
   date?: string;
@@ -22,14 +22,14 @@ export function markDone(vault: Vault, plan: Plan, request: DoneRequest): LogEnt
   const { task, occurrenceId, date } = occurrence(vault, plan, request);
   const placement = plan.placements.find((p) => p.occurrenceId === occurrenceId);
   const when = date === null ? '' : ` on ${formatDate(date)}`;
-  if (placement?.state === 'done') throw new VaultError(`${task.id} is already done${when}`);
+  if (placement?.state === 'done') throw new VaultError(`${nameOf(task)} is already done${when}`);
   if (placement) return { at: request.now, occurrenceId, state: 'done', start: placement.start, end: placement.end };
 
   const exists = plan.unplaced.some((u) => u.occurrenceId === occurrenceId) || plan.inbox.includes(occurrenceId);
   if (!exists) {
     const today = plan.days[0]?.date ?? '';
-    if (date !== null && date < today) throw new VaultError(`${task.id} was not planned on ${formatDate(date)}`);
-    throw new VaultError(`${task.id} has no occurrence${when}`);
+    if (date !== null && date < today) throw new VaultError(`${nameOf(task)} was not planned on ${formatDate(date)}`);
+    throw new VaultError(`${nameOf(task)} has no occurrence${when}`);
   }
   const end = Temporal.Instant.from(request.now);
   const start = end.subtract({ minutes: parseDuration(task.intention.duration) });
@@ -42,23 +42,37 @@ export function reopen(vault: Vault, plan: Plan, request: DoneRequest): LogEntry
   const placement = plan.placements.find((p) => p.occurrenceId === occurrenceId);
   const day = date ?? placement?.date ?? null;
   const today = plan.days[0]?.date;
-  if (day !== null && day !== today) throw new VaultError(`only today's tasks can be undone; ${task.id} on ${formatDate(day)} is history`);
-  if (placement?.state !== 'done') throw new VaultError(`${task.id} is not marked done${day === null ? '' : ` on ${formatDate(day)}`}`);
+  if (day !== null && day !== today) throw new VaultError(`only today's tasks can be undone; ${nameOf(task)} on ${formatDate(day)} is history`);
+  if (placement?.state !== 'done') throw new VaultError(`${nameOf(task)} is not marked done${day === null ? '' : ` on ${formatDate(day)}`}`);
   return { at: request.now, occurrenceId, state: 'open' };
 }
 
 /** The occurrence a request is about; `date` is null for a one-off task. */
 function occurrence(vault: Vault, plan: Plan, request: DoneRequest): { task: Task; occurrenceId: string; date: string | null } {
-  const task = vault.tasks.find((t) => t.id === request.task);
-  if (!task) throw new VaultError(`no task named "${request.task}"`);
+  const task = findTask(vault, request.task);
   if (task.intention.repeat === undefined) {
-    if (request.date !== undefined) throw new VaultError(`${task.id} is a one-off task; leave out the date`);
+    if (request.date !== undefined) throw new VaultError(`${nameOf(task)} is a one-off task; leave out the date`);
     return { task, occurrenceId: task.id, date: null };
   }
   const date = request.date ?? plan.days[0]?.date;
   if (date === undefined) throw new Error('the plan has no days');
   if (!isDate(date)) throw new VaultError(`"${date}" is not a date; use one like 2026-10-25`);
   return { task, occurrenceId: `${task.id}@${date}`, date };
+}
+
+/** How messages refer to a task: its title, or else its note name. */
+function nameOf(task: Task): string {
+  return task.intention.title ?? task.id;
+}
+
+/** A task by its id (the note name), or else by its title. */
+function findTask(vault: Vault, name: string): Task {
+  const byId = vault.tasks.find((t) => t.id === name);
+  if (byId) return byId;
+  const byTitle = vault.tasks.filter((t) => t.intention.title === name);
+  if (byTitle.length > 1) throw new VaultError(`"${name}" is the title of ${byTitle.length} tasks; use the note name: ${byTitle.map((t) => t.id).sort().join(', ')}`);
+  if (byTitle[0]) return byTitle[0];
+  throw new VaultError(`no task named "${name}"`);
 }
 
 function isDate(text: string): boolean {
